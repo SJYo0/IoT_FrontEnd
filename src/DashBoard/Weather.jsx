@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiFetch, readApiMessage } from "./api";
+import { apiFetch, readApiMessage } from "../Auth/api";
 
 function Weather() {
   const [data, setData] = useState(null);
