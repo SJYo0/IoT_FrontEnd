@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 
+axios.defaults.withCredentials = true;
+axios.defaults.xsrfCookieName = 'XSRF-TOKEN';
+axios.defaults.xsrfHeaderName = 'X-XSRF-TOKEN';
+
 const DeviceApprovePage = () => {
   const [devices, setDevices] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -9,10 +13,55 @@ const DeviceApprovePage = () => {
 
   const fetchPendingDevices = async () => {
     try {
-      const res = await axios.get('http://localhost:8080/devices/pending');
+      // 1. CSRF 토큰 발급소에서 응답(Response)을 통째로 받아옵니다.
+      const csrfRes = await axios.get('http://localhost:8080/api/auth/csrf', {
+        withCredentials: true
+      });
+
+      // 🚀 마법의 코드: 응답 데이터에서 토큰을 직접 뽑아내서 Axios 전역 헤더에 박아버립니다!
+      // (파트너가 스프링 기본 설정을 썼다면 토큰은 csrfRes.data.token 에 들어있습니다)
+      if (csrfRes.data && csrfRes.data.token) {
+        axios.defaults.headers.common['X-XSRF-TOKEN'] = csrfRes.data.token;
+      } else if (typeof csrfRes.data === 'string') {
+        // 혹시 파트너가 토큰 문자열만 덜렁 보냈을 경우를 대비한 보험
+        axios.defaults.headers.common['X-XSRF-TOKEN'] = csrfRes.data;
+      }
+
+      // 2. 이제 이마에 토큰을 붙였으니 당당하게 기기 목록을 불러옵니다.
+      const res = await axios.get('http://localhost:8080/devices/pending', {
+        withCredentials: true
+      });
       setDevices(res.data);
     } catch (error) {
       console.error("데이터 로드 실패", error);
+    }
+  };
+
+  const handleRejectClick = async (device) => {
+    // 1. 실수 방지용 확인 창 (UX 개선)
+    if (!window.confirm(`정말 ${device.macId} 기기의 연결을 거절하시겠습니까?`)) {
+      return; // 취소를 누르면 아무 일도 일어나지 않음
+    }
+
+    try {
+      // 2. 백엔드로 거절(POST) 요청 보내기
+      // 💡 이미 앞서 토큰을 전역 헤더에 달아두었으므로 시큐리티 프리패스입니다!
+      await axios.post('http://localhost:8080/devices/reject', 
+        {
+          macId: device.macId
+        },
+        {
+          withCredentials: true
+        }
+      );
+
+      // 3. 처리 성공 시 알림 및 목록 새로고침
+      alert("거절 처리되었습니다.");
+      fetchPendingDevices(); // 목록에서 사라지도록 다시 불러오기
+      
+    } catch (error) {
+      console.error("거절 처리 실패", error);
+      alert("거절 처리에 실패했습니다.");
     }
   };
 
@@ -23,12 +72,19 @@ const DeviceApprovePage = () => {
     setIsModalOpen(true);
   };
 
-  const handleSubmit = async () => {
+const handleSubmit = async () => {
     if (!formData.name || !formData.location) return alert("필수 항목을 입력해주세요.");
-    await axios.post('http://localhost:8080/devices/approve', {
-      macId: selectedDevice.macId,
-      ...formData
-    });
+    
+    await axios.post('http://localhost:8080/devices/approve', 
+      {
+        macId: selectedDevice.macId,
+        ...formData
+      }, 
+      {
+        withCredentials: true 
+      }
+    );
+    
     setIsModalOpen(false);
     fetchPendingDevices();
     alert("승인 완료!");
@@ -61,7 +117,7 @@ const DeviceApprovePage = () => {
                     승인
                   </button>
                   <button 
-                    onClick={() => {/* 거절로직 */}} 
+                    onClick={() => handleRejectClick(device)} 
                     className="px-4 py-2 bg-red-500 text-white font-bold rounded-lg hover:bg-red-600 transition-colors"
                   >
                     거절

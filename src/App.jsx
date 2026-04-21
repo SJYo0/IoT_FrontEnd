@@ -7,6 +7,7 @@ import DeviceApprovePage from './registerDevice/DeviceApprovePage';
 import Auth from './Auth/Auth';
 import Signup from './Auth/Signup';
 import Weather from './DashBoard/Weather';
+import CctvPage from './CCTV/CctvPage';
 import { apiFetch } from "./Auth/api";
 
 function ProtectedRoute({ children }) {
@@ -66,6 +67,16 @@ function App() {
               element={
                 <ProtectedRoute>
                   <Weather />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* 💡 2. CCTV 라우트 추가 (로그인한 사람만 볼 수 있게 보호) */}
+            <Route
+              path="/cctv"
+              element={
+                <ProtectedRoute>
+                  <CctvPage />
                 </ProtectedRoute>
               }
             />
