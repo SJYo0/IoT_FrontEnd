@@ -84,7 +84,6 @@ const handleSubmit = async () => {
         withCredentials: true 
       }
     );
-    
     setIsModalOpen(false);
     fetchPendingDevices();
     alert("승인 완료!");
@@ -117,7 +116,7 @@ const handleSubmit = async () => {
                     승인
                   </button>
                   <button 
-                    onClick={() => handleRejectClick(device)} 
+                    onClick={() => handleRejectClick(device)}
                     className="px-4 py-2 bg-red-500 text-white font-bold rounded-lg hover:bg-red-600 transition-colors"
                   >
                     거절
