@@ -1,0 +1,10 @@
+/* 💡 v4 전용 지시어 (이 한 줄이 핵심입니다!) */
+@import "tailwindcss";
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  color: black;
+}
