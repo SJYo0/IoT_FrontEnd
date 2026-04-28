@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch, ensureCsrfToken, readApiMessage } from "./api";
+import GamifiedSignupCard from "../components/ui/gamified-signup-card";
 
 const PASSWORD_POLICY =
   /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d\s])\S{8,12}$/;
@@ -61,78 +62,18 @@ function Signup() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100 w-full">
-      <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-xl border border-gray-200">
-        <h2 className="text-3xl font-extrabold text-center text-gray-900 mb-8">
-          관리자 회원가입
-        </h2>
-        
-        <div className="space-y-5">
-          {/* 아이디 입력 */}
-          <div>
-            <label className="block text-sm font-bold text-gray-700 mb-1">아이디</label>
-            <input
-              value={id}
-              onChange={(e) => setId(e.target.value)}
-              placeholder="사용할 아이디를 입력하세요"
-              className="w-full border border-gray-300 p-3 rounded-xl text-black focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-gray-50 focus:bg-white"
-            />
-          </div>
-          
-          {/* 비밀번호 입력 & 정책 안내 */}
-          <div>
-            <label className="block text-sm font-bold text-gray-700 mb-1">비밀번호</label>
-            <input
-              value={pw}
-              type="password"
-              onChange={(e) => setPw(e.target.value)}
-              placeholder="비밀번호를 입력하세요"
-              className="w-full border border-gray-300 p-3 rounded-xl text-black focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-gray-50 focus:bg-white"
-            />
-            <p className="text-xs text-gray-500 mt-2 ml-1">
-              * 8~12자, 대/소문자, 숫자, 특수문자 포함
-            </p>
-          </div>
-
-          {/* 이메일 입력 */}
-          <div>
-            <label className="block text-sm font-bold text-gray-700 mb-1">이메일</label>
-            <input
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="example@email.com"
-              className="w-full border border-gray-300 p-3 rounded-xl text-black focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-gray-50 focus:bg-white"
-            />
-          </div>
-
-          {/* 에러/성공 메시지 출력 */}
-          {message && (
-            <p className={`text-sm font-bold text-center mt-2 animate-pulse ${message.includes('성공') ? 'text-green-600' : 'text-red-500'}`}>
-              {message}
-            </p>
-          )}
-
-          {/* 버튼 영역 */}
-          <div className="pt-4 flex flex-col gap-3">
-            <button 
-              onClick={signup} 
-              disabled={loading}
-              className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200 disabled:bg-gray-400"
-            >
-              {loading ? "처리 중..." : "회원가입"}
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/")}
-              disabled={loading}
-              className="w-full py-3 bg-white text-gray-700 font-bold border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
-            >
-              로그인으로 돌아가기
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <GamifiedSignupCard
+      username={id}
+      password={pw}
+      email={email}
+      message={message}
+      loading={loading}
+      onUsernameChange={setId}
+      onPasswordChange={setPw}
+      onEmailChange={setEmail}
+      onSubmit={signup}
+      onLogin={() => navigate("/")}
+    />
   );
 }
 

@@ -47,7 +47,7 @@ function App() {
     <BrowserRouter>
       
       {/* 전체화면 컨테이너 */}
-      <div className="flex w-full h-screen overflow-hidden bg-[#262a2b]">
+      <div className="flex w-full h-screen overflow-hidden bg-sky-50">
         
         {/* 좌측 고정 사이드 바 */}
         <Sidebar />
@@ -63,13 +63,14 @@ function App() {
             <Route path="/" element={<Auth />} />
             <Route path="/signup" element={<Signup />} />
             <Route
-              path="/weather"
+              path="/dashboard"
               element={
                 <ProtectedRoute>
                   <Weather />
                 </ProtectedRoute>
               }
             />
+            <Route path="/weather" element={<Navigate to="/dashboard" replace />} />
 
             {/* 💡 2. CCTV 라우트 추가 (로그인한 사람만 볼 수 있게 보호) */}
             <Route
