@@ -3,6 +3,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch, readApiMessage } from "../Auth/api";
 
+// 💡 1. MQTT 라이브러리 임포트
+import Paho from "paho-mqtt";
+
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
 /** 백엔드 값이 없거나 숫자가 아니면 null (가짜 기본값 사용 안 함) */
@@ -50,6 +53,9 @@ function SemiGaugeCard({ title, value, unit, min, max, sublabel }) {
   const rInner = 38;
 
   const [nx, ny] = polar(cx, cy, rInner - 8, needleAngle);
+
+  // 💡 화재 의심 시 카드 배경색 변경 로직 추가
+  const isDanger = title === "화염 감지" && value != null && value < 500;
 
   return (
     <div className="flex h-full min-h-[168px] w-full min-w-0 flex-col rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
@@ -116,12 +122,53 @@ function Weather() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [now, setNow] = useState(() => new Date());
+
+  // 💡 2. 실시간 센서 데이터를 담을 상태 추가
+  const [mqttData, setMqttData] = useState(null);
+
   const navigate = useNavigate();
 
   const weather = useMemo(
     () => (Array.isArray(data?.weather) ? data.weather : []),
     [data],
   );
+
+  // 💡 3. MQTT 웹소켓 연결 useEffect
+  useEffect(() => {
+    const brokerHost = "localhost"; // 배포 시 서버 IP로 변경 필요
+    const brokerPort = 9001;
+    const clientId = "react_client_" + Math.random().toString(16).substr(2, 8);
+    const targetTopic = "gateway/+/telemetry";
+
+    const client = new Paho.Client(brokerHost, brokerPort, clientId);
+
+    client.onMessageArrived = (message) => {
+      try {
+        const payload = JSON.parse(message.payloadString);
+        // 상태를 업데이트하면 리액트가 알아서 화면의 해당 부분만 다시 그립니다.
+        setMqttData(payload); 
+      } catch (e) {
+        console.error("MQTT 파싱 에러:", e);
+      }
+    };
+
+    client.connect({
+      timeout: 3,
+      onSuccess: () => {
+        console.log("🟢 MQTT 웹소켓 연결 성공!");
+        client.subscribe(targetTopic);
+      },
+      onFailure: (err) => {
+        console.error("🔴 MQTT 연결 실패:", err.errorMessage);
+      }
+    });
+
+    return () => {
+      if (client.isConnected()) {
+        client.disconnect();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     apiFetch("/api/dashboard")
@@ -187,55 +234,61 @@ function Weather() {
     : null;
   const mainLabel = scoreLabelFromValue(dashboardScore);
 
+  const indoorTemp = mqttData?.temperature ?? null;
+  const indoorHum = mqttData?.humidity ?? null;
+  const indoorPressure = mqttData?.pressure ?? null;
+  const indoorTvoc = mqttData?.tvoc ?? null;
+  const indoorEco2 = mqttData?.eco2 ?? null;
+  const indoorFlame = mqttData?.flameValue ?? null;
+
   const metrics = [
     {
-      title: "온도",
-      value: ta,
+      title: "실내 온도",
+      value: indoorTemp,
       unit: "°C",
       min: -10,
       max: 40,
-      sublabel:
-        ta == null ? undefined : ta >= 18 && ta <= 26 ? "보통" : ta < 18 ? "약간 추움" : "약간 더움",
+      sublabel: indoorTemp == null ? undefined : indoorTemp >= 18 && indoorTemp <= 26 ? "쾌적" : indoorTemp < 18 ? "서늘함" : "더움",
     },
     {
-      title: "습도",
-      value: hm,
+      title: "실내 습도",
+      value: indoorHum,
       unit: "%",
       min: 0,
       max: 100,
-      sublabel: hm == null ? undefined : hm < 30 ? "건조" : hm > 60 ? "다습" : "보통",
+      sublabel: indoorHum == null ? undefined : indoorHum < 30 ? "건조" : indoorHum > 60 ? "다습" : "쾌적",
     },
     {
-      title: "풍향",
-      value: wd,
-      unit: "°",
-      min: 0,
-      max: 360,
+      title: "실내 기압",
+      value: indoorPressure,
+      unit: "hPa",
+      min: 900,
+      max: 1100,
       sublabel: undefined,
     },
     {
-      title: "이산화탄소",
-      value: apiNumber(latest.co2),
+      title: "이산화탄소 (eCO2)",
+      value: indoorEco2,
       unit: "ppm",
-      min: 300,
+      min: 400,
       max: 2000,
-      sublabel: undefined,
+      sublabel: indoorEco2 != null && indoorEco2 > 1000 ? "환기 권장" : "양호",
     },
     {
-      title: "화학물질",
-      value: apiNumber(latest.voc),
+      title: "화학물질 (TVOC)",
+      value: indoorTvoc,
       unit: "ppb",
       min: 0,
-      max: 500,
-      sublabel: undefined,
+      max: 1000,
+      sublabel: indoorTvoc != null && indoorTvoc > 500 ? "주의" : "안전",
     },
     {
-      title: "빛감지",
-      value: apiNumber(latest.lux),
-      unit: "lux",
+      title: "화염 감지",
+      value: indoorFlame,
+      unit: "",
       min: 0,
-      max: 1000,
-      sublabel: undefined,
+      max: 1024,
+      sublabel: indoorFlame != null && indoorFlame < 500 ? "🔥 화재 의심" : "안전",
     },
   ];
 
