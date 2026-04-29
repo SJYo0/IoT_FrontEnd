@@ -1,5 +1,6 @@
 import { AlertTriangle, CloudSun, Frown, MapPin, Meh, Smile } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { apiFetch, readApiMessage } from "../Auth/api";
 
@@ -43,10 +44,37 @@ const GAUGE_SEGMENTS = [
   { from: 36, to: 0, color: "#3b82f6" },
 ];
 
-function SemiGaugeCard({ title, value, unit, min, max, sublabel }) {
+const pageStagger = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.08, delayChildren: 0.05 },
+  },
+};
+
+const riseIn = {
+  hidden: { opacity: 0, y: 16 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { type: "spring", stiffness: 140, damping: 18 },
+  },
+};
+
+const cardShadow = "shadow-[0_1px_2px_rgba(15,23,42,0.06),0_14px_34px_rgba(15,23,42,0.06)]";
+const cardHover = "hover:shadow-[0_2px_4px_rgba(15,23,42,0.08),0_18px_40px_rgba(15,23,42,0.10)]";
+
+function SemiGaugeCard({ title, value, unit, min, max, sublabel, alertSeverity, alertMessage }) {
   const missing = value == null;
   const percent = missing ? 0 : clamp(((value - min) / (max - min)) * 100, 0, 100);
   const needleAngle = 180 - (percent / 100) * 180;
+  const hasAlert = alertSeverity === "WARNING" || alertSeverity === "CRITICAL";
+  const alertClass =
+    alertSeverity === "CRITICAL"
+      ? "border-rose-300 bg-rose-50/70"
+      : alertSeverity === "WARNING"
+        ? "border-amber-300 bg-amber-50/70"
+        : "border-slate-200/70 bg-white/95";
   const cx = 84;
   const cy = 66;
   const rOuter = 54;
@@ -54,16 +82,27 @@ function SemiGaugeCard({ title, value, unit, min, max, sublabel }) {
 
   const [nx, ny] = polar(cx, cy, rInner - 8, needleAngle);
 
-  // 💡 화재 의심 시 카드 배경색 변경 로직 추가
-  const isDanger = title === "화염 감지" && value != null && value < 500;
-
   return (
-    <div className="flex h-full min-h-[168px] w-full min-w-0 flex-col rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-      <p className="text-base font-bold text-slate-800">{title}</p>
+    <motion.div
+      variants={riseIn}
+      whileHover={{ scale: 1.02, y: -2 }}
+      transition={{ type: "spring", stiffness: 220, damping: 20 }}
+      className={`flex h-full min-h-[152px] w-full min-w-0 flex-col rounded-[24px] border p-4 ${alertClass} ${cardShadow} ${cardHover}`}
+    >
+      <p className="text-base font-extrabold text-slate-800 tracking-[-0.02em] leading-relaxed">{title}</p>
+      {hasAlert && (
+        <p
+          className={`mt-1 rounded-md px-2 py-1 text-[11px] font-semibold ${
+            alertSeverity === "CRITICAL" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"
+          }`}
+        >
+          {alertMessage || (alertSeverity === "CRITICAL" ? "위험 경보 발생" : "주의 경보 발생")}
+        </p>
+      )}
       <div className="mt-2 flex min-h-0 flex-1 items-center justify-between gap-3">
         <div className="flex flex-col justify-center">
-          <p className="text-xs font-medium text-slate-500">점수</p>
-          <p className="text-2xl font-extrabold leading-tight text-slate-800">
+          <p className="text-sm font-normal text-slate-500 tracking-[-0.02em] leading-relaxed">점수</p>
+          <p className="text-[24px] font-black leading-tight text-slate-800 tracking-[-0.02em]">
             {missing ? (
               "-"
             ) : (
@@ -73,9 +112,13 @@ function SemiGaugeCard({ title, value, unit, min, max, sublabel }) {
               </>
             )}
           </p>
-          {!missing && sublabel && <p className="mt-1 text-xs font-semibold text-slate-500">{sublabel}</p>}
+          {!missing && sublabel && (
+            <p className="mt-1 text-sm font-normal text-slate-500 tracking-[-0.02em] leading-relaxed">
+              {sublabel}
+            </p>
+          )}
         </div>
-        <div className="relative h-[100px] w-[150px] shrink-0">
+        <div className="relative h-[86px] w-[132px] shrink-0">
           <svg className="h-full w-full overflow-visible" viewBox="0 0 168 88">
             {GAUGE_SEGMENTS.map((seg) => (
               <path
@@ -106,7 +149,7 @@ function SemiGaugeCard({ title, value, unit, min, max, sublabel }) {
           </svg>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -118,13 +161,79 @@ function scoreLabelFromValue(score) {
   return "매우나쁨";
 }
 
+function windDirectionInfo(degree) {
+  if (degree == null) {
+    return { label: "-", short: "-", angle: 0 };
+  }
+  const normalized = ((degree % 360) + 360) % 360;
+  const labels = [
+    { label: "북풍", short: "N" },
+    { label: "북동풍", short: "NE" },
+    { label: "동풍", short: "E" },
+    { label: "남동풍", short: "SE" },
+    { label: "남풍", short: "S" },
+    { label: "남서풍", short: "SW" },
+    { label: "서풍", short: "W" },
+    { label: "북서풍", short: "NW" },
+  ];
+  const index = Math.round(normalized / 45) % 8;
+  return { ...labels[index], angle: normalized };
+}
+
+function CompassRose({ angle, sizeClass = "h-28 w-28" }) {
+  return (
+    <svg viewBox="0 0 120 120" className={sizeClass}>
+      <circle cx="60" cy="60" r="54" fill="#0b1220" stroke="#1e3a5f" strokeWidth="3" />
+      <circle cx="60" cy="60" r="42" fill="none" stroke="#1e3a5f" strokeWidth="1.5" />
+      <circle cx="60" cy="60" r="30" fill="none" stroke="#1e3a5f" strokeWidth="1.2" />
+
+      {[...Array(36)].map((_, i) => {
+        const deg = i * 10;
+        const isMajor = deg % 30 === 0;
+        const r1 = isMajor ? 44 : 48;
+        const r2 = 52;
+        return (
+          <line
+            key={deg}
+            x1={60 + r1 * Math.cos((deg * Math.PI) / 180)}
+            y1={60 + r1 * Math.sin((deg * Math.PI) / 180)}
+            x2={60 + r2 * Math.cos((deg * Math.PI) / 180)}
+            y2={60 + r2 * Math.sin((deg * Math.PI) / 180)}
+            stroke="#2d4f73"
+            strokeWidth={isMajor ? 1.4 : 0.8}
+          />
+        );
+      })}
+
+      <text x="60" y="16" textAnchor="middle" fill="#e2e8f0" fontSize="10" fontWeight="700">
+        N
+      </text>
+      <text x="104" y="64" textAnchor="middle" fill="#94a3b8" fontSize="9" fontWeight="700">
+        E
+      </text>
+      <text x="60" y="112" textAnchor="middle" fill="#94a3b8" fontSize="9" fontWeight="700">
+        S
+      </text>
+      <text x="16" y="64" textAnchor="middle" fill="#94a3b8" fontSize="9" fontWeight="700">
+        W
+      </text>
+
+      <g style={{ transform: `rotate(${angle}deg)`, transformOrigin: "60px 60px", transition: "transform 0.35s ease" }}>
+        <polygon points="60,19 56,60 64,60" fill="#ef4444" />
+        <polygon points="60,101 56,60 64,60" fill="#3b82f6" />
+      </g>
+      <circle cx="60" cy="60" r="4" fill="#e2e8f0" />
+    </svg>
+  );
+}
+
 function Weather() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
-  const [now, setNow] = useState(() => new Date());
 
   // 💡 2. 실시간 센서 데이터를 담을 상태 추가
   const [mqttData, setMqttData] = useState(null);
+  const [alarmByCategory, setAlarmByCategory] = useState({});
 
   const navigate = useNavigate();
 
@@ -135,18 +244,35 @@ function Weather() {
 
   // 💡 3. MQTT 웹소켓 연결 useEffect
   useEffect(() => {
-    const brokerHost = "localhost"; // 배포 시 서버 IP로 변경 필요
-    const brokerPort = 9001;
+    const brokerHost = "vegetables-polyester-chair-mission.trycloudflare.com"; // 배포 시 서버 IP로 변경 필요
+    const brokerPort = 443;
     const clientId = "react_client_" + Math.random().toString(16).substr(2, 8);
     const targetTopic = "gateway/+/telemetry";
+    const targetTopic2 = "webbackend/alarm/+";
 
     const client = new Paho.Client(brokerHost, brokerPort, clientId);
 
     client.onMessageArrived = (message) => {
       try {
+        const topic = message.destinationName;
         const payload = JSON.parse(message.payloadString);
         // 상태를 업데이트하면 리액트가 알아서 화면의 해당 부분만 다시 그립니다.
+        if(topic.includes("telemetry")) {
         setMqttData(payload); 
+        }
+        else if(topic.includes("alarm")) {
+          if (payload?.category) {
+            setAlarmByCategory((prev) => ({
+              ...prev,
+              [payload.category]: {
+                severity: payload?.severity ?? "NORMAL",
+                message: payload?.message ?? "",
+                timestamp: payload?.timestamp ?? Date.now(),
+              },
+            }));
+          }
+          console.log(payload);
+        }
       } catch (e) {
         console.error("MQTT 파싱 에러:", e);
       }
@@ -154,9 +280,11 @@ function Weather() {
 
     client.connect({
       timeout: 3,
+      useSSL: true,
       onSuccess: () => {
         console.log("🟢 MQTT 웹소켓 연결 성공!");
         client.subscribe(targetTopic);
+        client.subscribe(targetTopic2);
       },
       onFailure: (err) => {
         console.error("🔴 MQTT 연결 실패:", err.errorMessage);
@@ -186,15 +314,10 @@ function Weather() {
       .catch(() => setError("대시보드 정보를 불러오지 못했습니다."));
   }, [navigate]);
 
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
   if (error) {
     return (
-      <div className="h-full bg-sky-50 p-6">
-        <div className="mx-auto max-w-6xl rounded-2xl border border-rose-200 bg-white p-6 text-rose-600">
+      <div className="h-full bg-slate-100 p-6 tracking-[-0.02em] leading-relaxed">
+        <div className={`mx-auto max-w-6xl rounded-[24px] border border-rose-200/70 bg-white p-6 text-rose-600 ${cardShadow}`}>
           {error}
         </div>
       </div>
@@ -203,9 +326,16 @@ function Weather() {
 
   if (!data) {
     return (
-      <div className="h-full bg-sky-50 p-6">
-        <div className="mx-auto max-w-6xl rounded-2xl border border-sky-200 bg-white p-6 text-slate-600">
-          불러오는 중...
+      <div className="h-full bg-slate-100 p-6 tracking-[-0.02em] leading-relaxed">
+        <div className={`mx-auto max-w-6xl rounded-[24px] border border-slate-300/70 bg-white p-6 ${cardShadow}`}>
+          <div className="grid gap-4">
+            <div className="h-6 w-48 animate-pulse rounded bg-slate-200" />
+            <div className="h-24 w-full animate-pulse rounded-[16px] bg-slate-100" />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="h-28 animate-pulse rounded-[16px] bg-slate-100" />
+              <div className="h-28 animate-pulse rounded-[16px] bg-slate-100" />
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -217,6 +347,8 @@ function Weather() {
   const ws = apiNumber(latest.ws);
   const wd = apiNumber(latest.wd);
   const rn = apiNumber(latest.rn);
+  const weatherText = latest.wf || latest.weather || latest.wfKor || "정보 없음";
+  const windInfo = windDirectionInfo(wd);
 
   const hasScoreInput = ta != null || hm != null || rn != null || ws != null;
   const dashboardScore = hasScoreInput
@@ -240,6 +372,11 @@ function Weather() {
   const indoorTvoc = mqttData?.tvoc ?? null;
   const indoorEco2 = mqttData?.eco2 ?? null;
   const indoorFlame = mqttData?.flameValue ?? null;
+  const tempAlarm = alarmByCategory?.TEMP;
+  const humidityAlarm = alarmByCategory?.HUMIDITY;
+  const fireAlarm = alarmByCategory?.FIRE;
+  const tvocAlarm = alarmByCategory?.TVOC;
+  const eco2Alarm = alarmByCategory?.ECO2;
 
   const metrics = [
     {
@@ -249,6 +386,8 @@ function Weather() {
       min: -10,
       max: 40,
       sublabel: indoorTemp == null ? undefined : indoorTemp >= 18 && indoorTemp <= 26 ? "쾌적" : indoorTemp < 18 ? "서늘함" : "더움",
+      alertSeverity: tempAlarm?.severity,
+      alertMessage: tempAlarm?.severity === "NORMAL" ? "" : tempAlarm?.message,
     },
     {
       title: "실내 습도",
@@ -257,6 +396,8 @@ function Weather() {
       min: 0,
       max: 100,
       sublabel: indoorHum == null ? undefined : indoorHum < 30 ? "건조" : indoorHum > 60 ? "다습" : "쾌적",
+      alertSeverity: humidityAlarm?.severity,
+      alertMessage: humidityAlarm?.severity === "NORMAL" ? "" : humidityAlarm?.message,
     },
     {
       title: "실내 기압",
@@ -267,12 +408,14 @@ function Weather() {
       sublabel: undefined,
     },
     {
-      title: "이산화탄소 (eCO2)",
-      value: indoorEco2,
-      unit: "ppm",
-      min: 400,
-      max: 2000,
-      sublabel: indoorEco2 != null && indoorEco2 > 1000 ? "환기 권장" : "양호",
+      title: "화염 감지",
+      value: indoorFlame,
+      unit: "",
+      min: 0,
+      max: 1024,
+      sublabel: indoorFlame != null && indoorFlame < 500 ? "화재 의심" : "안전",
+      alertSeverity: fireAlarm?.severity,
+      alertMessage: fireAlarm?.severity === "NORMAL" ? "" : fireAlarm?.message,
     },
     {
       title: "화학물질 (TVOC)",
@@ -281,29 +424,20 @@ function Weather() {
       min: 0,
       max: 1000,
       sublabel: indoorTvoc != null && indoorTvoc > 500 ? "주의" : "안전",
+      alertSeverity: tvocAlarm?.severity,
+      alertMessage: tvocAlarm?.severity === "NORMAL" ? "" : tvocAlarm?.message,
     },
     {
-      title: "화염 감지",
-      value: indoorFlame,
-      unit: "",
-      min: 0,
-      max: 1024,
-      sublabel: indoorFlame != null && indoorFlame < 500 ? "🔥 화재 의심" : "안전",
+      title: "이산화탄소 (eCO2)",
+      value: indoorEco2,
+      unit: "ppm",
+      min: 400,
+      max: 2000,
+      sublabel: indoorEco2 != null && indoorEco2 > 1000 ? "환기 권장" : "양호",
+      alertSeverity: eco2Alarm?.severity,
+      alertMessage: eco2Alarm?.severity === "NORMAL" ? "" : eco2Alarm?.message,
     },
   ];
-
-  const bars = [47, 47, 65, 55, 75, 90, 93];
-  const weekLabels = ["4/4", "4/5", "4/6", "4/7", "4/8", "4/9", "4/10"];
-  const pm10 = apiNumber(latest.pm10);
-  const pm25 = apiNumber(latest.pm25);
-  const co2Outdoor = apiNumber(latest.co2);
-  const currentDate = now.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" });
-  const currentTime = now.toLocaleTimeString("ko-KR", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
 
   const statusItems = [
     { label: "좋음", icon: Smile, active: dashboardScore != null && mainLabel === "좋음" },
@@ -317,25 +451,35 @@ function Weather() {
   ];
 
   return (
-    <div className="min-h-screen overflow-x-auto bg-sky-50 p-3">
-      <div className="mx-auto grid min-h-[calc(100vh-24px)] max-w-[1720px] grid-cols-[300px_1fr_340px] items-stretch gap-3">
+    <div
+      className="h-full overflow-x-auto p-4 tracking-[-0.02em] leading-relaxed"
+      style={{
+        backgroundImage:
+          "radial-gradient(circle at 20% 0%, rgba(148,163,184,0.16), transparent 36%), radial-gradient(circle at 80% 100%, rgba(100,116,139,0.14), transparent 38%), linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%), repeating-linear-gradient(0deg, rgba(15,23,42,0.012) 0px, rgba(15,23,42,0.012) 1px, transparent 1px, transparent 3px)",
+      }}
+    >
+      <motion.div
+        variants={pageStagger}
+        initial="hidden"
+        animate="show"
+        className="mx-auto grid h-full min-h-[calc(100vh-104px)] max-w-[1720px] grid-cols-[280px_minmax(0,_15fr)_minmax(0,_10fr)] grid-rows-[1fr_auto] gap-4"
+      >
         {/* Left panel */}
-        <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-gradient-to-b from-[#9cccf0] to-[#5fa3e0] p-4 text-white shadow-md">
-          <div className="flex justify-end text-sm font-semibold leading-tight">
-            <p className="whitespace-nowrap text-right tabular-nums opacity-95">
-              {currentDate}{" "}
-              <span className="font-normal opacity-90">{currentTime}</span>
-            </p>
-          </div>
-          <p className="mt-4 text-center text-xl font-bold">센서</p>
+          <motion.section
+            variants={riseIn}
+            whileHover={{ scale: 1.01 }}
+            transition={{ type: "spring", stiffness: 180, damping: 18 }}
+            className={`row-span-2 flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] border border-[#aaaaaa] bg-[#b8b8b8] p-5 text-slate-800 ${cardShadow}`}
+          >
+          <p className="mt-2 text-center text-[20px] font-black tracking-[-0.02em]">센서</p>
 
-          <div className="mx-auto mt-4 flex h-[200px] w-[200px] shrink-0 items-center justify-center rounded-full border-[14px] border-white shadow-inner">
+          <div className="mx-auto mt-4 flex h-[188px] w-[188px] shrink-0 items-center justify-center rounded-full border-[12px] border-white shadow-inner">
             <div className="text-center px-2">
-              <p className="text-xs font-semibold text-white/95">점수</p>
-              <p className="mt-1 text-5xl font-extrabold leading-none text-white">
+              <p className="text-xs font-semibold text-slate-700">점수</p>
+              <p className="mt-1 text-5xl font-extrabold leading-none text-slate-900">
                 {dashboardScore == null ? "-" : dashboardScore}
               </p>
-              <p className="mt-2 text-2xl font-bold text-white">{mainLabel}</p>
+              <p className="mt-2 text-2xl font-bold text-slate-800">{mainLabel}</p>
             </div>
           </div>
 
@@ -344,129 +488,105 @@ function Weather() {
               <div key={item.label} className="flex flex-col items-center gap-1">
                 <div
                   className={`flex h-11 w-11 items-center justify-center rounded-full border-2 ${
-                    item.active ? "border-white bg-white text-sky-600 shadow-md" : "border-white/40 bg-white/10 text-white/80"
+                    item.active
+                      ? "border-white bg-white text-slate-700 shadow-md"
+                      : "border-slate-500/40 bg-white/50 text-slate-700"
                   }`}
                 >
                   <item.icon className="h-5 w-5" strokeWidth={item.active ? 2.5 : 2} />
                 </div>
-                <p className={`text-[10px] font-semibold ${item.active ? "text-white" : "text-white/70"}`}>
+                <p className={`text-[10px] font-semibold ${item.active ? "text-slate-800" : "text-slate-700"}`}>
                   {item.label}
                 </p>
               </div>
             ))}
           </div>
-        </section>
+          </motion.section>
 
-        {/* Middle: 7 semi gauges — stretch to fill column height */}
-        <section className="flex h-full min-h-0 flex-col rounded-2xl border border-sky-100 bg-white p-4 shadow-sm">
+          {/* Middle: 6 semi gauges */}
+          <motion.section
+            variants={riseIn}
+            className={`flex h-full min-h-0 flex-col rounded-[24px] border border-slate-200/70 bg-white/90 p-5 ${cardShadow}`}
+          >
           <div
             className="grid min-h-0 flex-1 grid-cols-2 gap-4"
-            style={{ gridTemplateRows: "repeat(3, minmax(0, 1fr)) minmax(0, 1fr)" }}
+            style={{ gridTemplateRows: "repeat(3, minmax(0, 1fr))" }}
           >
             {metrics.map((m) => (
               <div key={m.title} className="flex h-full min-h-0 w-full">
                 <SemiGaugeCard {...m} />
               </div>
             ))}
-            <div className="col-span-2 flex h-full min-h-0 w-full">
-              <div className="flex h-full min-h-[168px] w-full min-w-0 flex-col justify-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-                <p className="text-base font-bold text-slate-800">주의보 감지</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div
-                    className={`rounded-xl border-2 px-3 py-4 text-center ${
-                      data.windWarning
-                        ? "border-rose-300 bg-rose-50"
-                        : "border-emerald-200 bg-emerald-50/80"
-                    }`}
-                  >
-                    <p className="text-xs font-semibold text-slate-600">강풍주의보</p>
-                    <p
-                      className={`mt-2 text-lg font-extrabold ${
-                        data.windWarning ? "text-rose-600" : "text-emerald-700"
-                      }`}
-                    >
-                      {data.windWarning ? "감지" : "미감지"}
-                    </p>
-                  </div>
-                  <div
-                    className={`rounded-xl border-2 px-3 py-4 text-center ${
-                      data.dryWarning
-                        ? "border-amber-300 bg-amber-50"
-                        : "border-emerald-200 bg-emerald-50/80"
-                    }`}
-                  >
-                    <p className="text-xs font-semibold text-slate-600">건조주의보</p>
-                    <p
-                      className={`mt-2 text-lg font-extrabold ${
-                        data.dryWarning ? "text-amber-700" : "text-emerald-700"
-                      }`}
-                    >
-                      {data.dryWarning ? "감지" : "미감지"}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
-        </section>
+          </motion.section>
 
-        {/* Right */}
-        <section className="grid h-full min-h-0 grid-rows-[auto_auto_1fr] gap-3">
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+          {/* Right */}
+          <motion.section variants={riseIn} className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
+            <div className={`rounded-[24px] border border-slate-200/70 bg-white/95 p-5 ${cardShadow}`}>
             <div className="flex items-start justify-between">
-              <p className="text-sm font-bold text-slate-800">실외 날씨정보</p>
+              <p className="text-[14px] font-black text-slate-800 tracking-[-0.02em]">실외 날씨정보</p>
               <div className="text-right">
-                <p className="flex items-center justify-end gap-1 text-xs font-semibold text-slate-500">
-                  <MapPin className="h-3.5 w-3.5" />
+                <p className="flex items-center justify-end gap-1 text-[12px] font-normal text-slate-500 tracking-[-0.02em]">
+                  <MapPin className="h-3.5 w-3.5" strokeWidth={1.5} />
                   서울특별시
                 </p>
               </div>
             </div>
             <div className="mt-3 flex items-center gap-3">
-              <CloudSun className="h-14 w-14 shrink-0 text-amber-400" />
-              <div>
-                <p className="text-4xl font-extrabold text-sky-600">
-                  {ta == null ? "-" : `${ta}°C`}
-                </p>
-                <p className="text-sm font-semibold text-slate-600">구름많고 해</p>
-                <p className="text-xs text-slate-500">습도 {hm == null ? "-" : `${hm}%`}</p>
+              <div className="grid min-h-[182px] w-full grid-cols-2 grid-rows-[auto_auto] rounded-xl border border-slate-200 bg-slate-100/40">
+                <div className="flex items-start justify-start gap-3 px-3 py-3">
+                  <div className="mt-6 flex items-center justify-center rounded-lg bg-slate-100/80 p-2">
+                    <CloudSun className="h-16 w-16 shrink-0 text-slate-500" strokeWidth={1.5} />
+                  </div>
+                  <div className="min-w-0 flex-1 rounded-lg bg-white/80 px-3 py-2 text-slate-700">
+                    <p className="text-2xl font-extrabold leading-none">{ta == null ? "-" : `${ta}°C`}</p>
+                    <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[12px]">
+                      <p className="font-semibold text-slate-500">날씨</p>
+                      <p className="truncate font-semibold">{weatherText}</p>
+                      <p className="font-semibold text-slate-500">습도</p>
+                      <p className="font-semibold">{hm == null ? "-" : `${hm}%`}</p>
+                      <p className="font-semibold text-slate-500">강수</p>
+                      <p className="font-semibold">{rn == null ? "-" : `${rn} mm`}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-center justify-center border-l border-slate-200 bg-white/70 px-3 py-2 text-center">
+                  <CompassRose angle={windInfo.angle} sizeClass="h-20 w-20" />
+                  <p className="mt-1 text-xs font-semibold text-slate-500">풍향</p>
+                  <p className="text-base font-extrabold text-slate-800">{windInfo.label}</p>
+                  <p className="text-xs text-slate-500">{wd == null ? "-" : `${wd}° (${windInfo.short})`}</p>
+                </div>
+
+                <div className="col-span-2 border-t border-slate-200/80 px-3 py-2 text-center text-[11px]">
+                  <p className={`font-semibold ${data.dryWarning ? "text-rose-600" : "text-emerald-700"}`}>
+                    건조주의보 {data.dryWarning ? "발령" : "미발령"}
+                  </p>
+                  <p className={`mt-1 font-semibold ${data.windWarning ? "text-rose-600" : "text-emerald-700"}`}>
+                    강풍주의보 {data.windWarning ? "발령" : "미발령"}
+                  </p>
+                </div>
               </div>
             </div>
-            <ul className="mt-3 space-y-1 border-t border-slate-100 pt-2 text-xs text-slate-600">
-              <li>미세먼지 {pm10 == null ? "-" : `${formatDashNumber(pm10)} µg/m³`}</li>
-              <li>초미세먼지 {pm25 == null ? "-" : `${formatDashNumber(pm25)} µg/m³`}</li>
-              <li>이산화탄소 {co2Outdoor == null ? "-" : `${formatDashNumber(co2Outdoor, 3)} ppm`}</li>
-            </ul>
-          </div>
-
-          <div className="rounded-2xl border border-sky-100 bg-sky-100/60 p-4 shadow-sm">
-            <p className="text-sm font-bold text-sky-800">IoT 프로젝트</p>
-            <p className="mt-1 text-xs text-slate-600">
-              센서·날씨 데이터를 실시간으로 모니터링하고 환경을 관리하세요.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-            <p className="mb-2 text-sm font-bold text-slate-800">주간 점수 차트</p>
-            <div className="mb-2 flex justify-between text-[10px] text-slate-400">
-              <span>0</span>
-              <span>50</span>
-              <span>100</span>
             </div>
-            <div className="space-y-2.5">
-              {bars.map((bar, index) => (
-                <div key={weekLabels[index]} className="grid grid-cols-[36px_1fr_28px] items-center gap-2">
-                  <span className="text-[11px] font-medium text-slate-500">{weekLabels[index]}</span>
-                  <div className="h-2.5 rounded-full bg-slate-100">
-                    <div className="h-2.5 rounded-full bg-sky-400" style={{ width: `${bar}%` }} />
-                  </div>
-                  <span className="text-right text-[11px] font-bold text-slate-700">{bar}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-      </div>
+
+            <motion.div
+              whileHover={{ scale: 1.02 }}
+              transition={{ type: "spring", stiffness: 220, damping: 20 }}
+              className={`flex items-center justify-center rounded-[24px] border border-slate-200/70 bg-white/95 p-4 ${cardShadow} ${cardHover}`}
+            >
+            </motion.div>
+          </motion.section>
+
+          <motion.section variants={riseIn} className="col-start-2 col-end-4 flex h-full min-h-0 w-full">
+            <motion.div
+              whileHover={{ scale: 1.01, y: -2 }}
+              transition={{ type: "spring", stiffness: 180, damping: 20 }}
+              className={`flex h-full min-h-[152px] w-full min-w-0 items-center justify-center rounded-[24px] border border-slate-200/70 bg-white/95 p-4 ${cardShadow} ${cardHover}`}
+            >
+            </motion.div>
+          </motion.section>
+      </motion.div>
     </div>
   );
 }

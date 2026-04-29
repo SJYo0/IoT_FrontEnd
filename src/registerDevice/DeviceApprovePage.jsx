@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
+import { API_BASE_URL } from '../Auth/api';
 
 axios.defaults.withCredentials = true;
 axios.defaults.xsrfCookieName = 'XSRF-TOKEN';
@@ -10,11 +11,12 @@ const DeviceApprovePage = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [formData, setFormData] = useState({ name: '', location: '' });
+  const [errorMessage, setErrorMessage] = useState('');
 
   const fetchPendingDevices = async () => {
     try {
       // 1. CSRF 토큰 발급소에서 응답(Response)을 통째로 받아옵니다.
-      const csrfRes = await axios.get('http://localhost:8080/api/auth/csrf', {
+      const csrfRes = await axios.get(`${API_BASE_URL}/api/auth/csrf`, {
         withCredentials: true
       });
 
@@ -28,12 +30,20 @@ const DeviceApprovePage = () => {
       }
 
       // 2. 이제 이마에 토큰을 붙였으니 당당하게 기기 목록을 불러옵니다.
-      const res = await axios.get('http://localhost:8080/devices/pending', {
+      const res = await axios.get(`${API_BASE_URL}/devices/pending`, {
         withCredentials: true
       });
-      setDevices(res.data);
+      if (Array.isArray(res.data)) {
+        setDevices(res.data);
+        setErrorMessage('');
+      } else {
+        setDevices([]);
+        setErrorMessage('연결 요청 목록을 불러오지 못했습니다. 로그인 상태를 확인해주세요.');
+      }
     } catch (error) {
       console.error("데이터 로드 실패", error);
+      setDevices([]);
+      setErrorMessage('연결 요청 목록을 불러오지 못했습니다.');
     }
   };
 
@@ -46,7 +56,7 @@ const DeviceApprovePage = () => {
     try {
       // 2. 백엔드로 거절(POST) 요청 보내기
       // 💡 이미 앞서 토큰을 전역 헤더에 달아두었으므로 시큐리티 프리패스입니다!
-      await axios.post('http://localhost:8080/devices/reject', 
+      await axios.post(`${API_BASE_URL}/devices/reject`, 
         {
           macId: device.macId
         },
@@ -75,7 +85,7 @@ const DeviceApprovePage = () => {
 const handleSubmit = async () => {
     if (!formData.name || !formData.location) return alert("필수 항목을 입력해주세요.");
     
-    await axios.post('http://localhost:8080/devices/approve', 
+    await axios.post(`${API_BASE_URL}/devices/approve`, 
       {
         macId: selectedDevice.macId,
         ...formData
@@ -93,6 +103,11 @@ const handleSubmit = async () => {
     // bg-white와 text-black을 최상단에 명시
     <div className="p-8 w-full min-h-screen bg-white text-black">
       <h1 className="text-3xl font-bold mb-8 text-black">기기 연결 요청 확인</h1>
+      {errorMessage && (
+        <p className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {errorMessage}
+        </p>
+      )}
       
       <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
         <table className="w-full text-left border-collapse">
