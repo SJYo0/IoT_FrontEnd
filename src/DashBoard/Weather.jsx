@@ -1,8 +1,8 @@
-import { AlertTriangle, CloudSun, Frown, MapPin, Meh, Smile } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, CloudSun, Frown, MapPin, Meh, Smile, Maximize2 } from "lucide-react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { apiFetch, readApiMessage } from "../Auth/api";
+import { apiFetch } from "../Auth/api";
 
 // 💡 1. MQTT 라이브러리 임포트
 import Paho from "paho-mqtt";
@@ -231,20 +231,43 @@ function Weather() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
 
-  // 💡 2. 실시간 센서 데이터를 담을 상태 추가
   const [mqttData, setMqttData] = useState(null);
   const [alarmByCategory, setAlarmByCategory] = useState({});
 
   const navigate = useNavigate();
+  
+  // 💡 CCTV 전체화면을 위한 ref 생성
+  const cctvContainerRef = useRef(null);
+
+  const RPI_IP = "192.168.137.111"; 
 
   const weather = useMemo(
     () => (Array.isArray(data?.weather) ? data.weather : []),
     [data],
   );
 
-  // 💡 3. MQTT 웹소켓 연결 useEffect
+  // 전체화면 토글 함수
+  const handleFullscreen = () => {
+    const elem = cctvContainerRef.current;
+    if (!elem) return;
+
+    if (!document.fullscreenElement) {
+      if (elem.requestFullscreen) {
+        elem.requestFullscreen();
+      } else if (elem.webkitRequestFullscreen) { /* Safari */
+        elem.webkitRequestFullscreen();
+      } else if (elem.msRequestFullscreen) { /* IE11 */
+        elem.msRequestFullscreen();
+      }
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+    }
+  };
+
   useEffect(() => {
-    const brokerHost = "vegetables-polyester-chair-mission.trycloudflare.com"; // 배포 시 서버 IP로 변경 필요
+    const brokerHost = "vegetables-polyester-chair-mission.trycloudflare.com"; 
     const brokerPort = 443;
     const clientId = "react_client_" + Math.random().toString(16).substr(2, 8);
     const targetTopic = "gateway/+/telemetry";
@@ -256,9 +279,8 @@ function Weather() {
       try {
         const topic = message.destinationName;
         const payload = JSON.parse(message.payloadString);
-        // 상태를 업데이트하면 리액트가 알아서 화면의 해당 부분만 다시 그립니다.
         if(topic.includes("telemetry")) {
-        setMqttData(payload); 
+          setMqttData(payload); 
         }
         else if(topic.includes("alarm")) {
           if (payload?.category) {
@@ -271,7 +293,6 @@ function Weather() {
               },
             }));
           }
-          console.log(payload);
         }
       } catch (e) {
         console.error("MQTT 파싱 에러:", e);
@@ -282,7 +303,6 @@ function Weather() {
       timeout: 3,
       useSSL: true,
       onSuccess: () => {
-        console.log("🟢 MQTT 웹소켓 연결 성공!");
         client.subscribe(targetTopic);
         client.subscribe(targetTopic2);
       },
@@ -312,6 +332,30 @@ function Weather() {
       })
       .then((responseData) => setData(responseData))
       .catch(() => setError("대시보드 정보를 불러오지 못했습니다."));
+
+      // 💡 2. [추가된 부분] 현재 진행 중인 비상 알람 상태 동기화
+    // 실제 연결된 기기의 MAC 주소를 넣어야 합니다 (예시로 RPI_MAC 사용)
+    const RPI_MAC = "2C:CF:67:B8:09:AE"; 
+    apiFetch(`/api/alerts/active/${RPI_MAC}`)
+      .then((res) => {
+        if (res.ok) return res.json();
+        return [];
+      })
+      .then((activeAlerts) => {
+        // DB에서 가져온 활성 알람 리스트를 바탕으로 초기 상태 구성
+        const initialAlarms = {};
+        activeAlerts.forEach((alert) => {
+          initialAlarms[alert.category] = {
+            severity: alert.severity,
+            message: alert.message,
+            timestamp: new Date(alert.createdAt).getTime(),
+          };
+        });
+        
+        // 가져온 데이터로 알람 State 초기화!
+        setAlarmByCategory(initialAlarms);
+      })
+      .catch((err) => console.error("활성 알람 로깅 실패:", err));
   }, [navigate]);
 
   if (error) {
@@ -570,14 +614,56 @@ function Weather() {
             </div>
             </div>
 
+            {/* 💡 실외 날씨정보칸 아랫칸 (CCTV 영역) */}
             <motion.div
-              whileHover={{ scale: 1.02 }}
+              whileHover={{ scale: 1.01 }}
               transition={{ type: "spring", stiffness: 220, damping: 20 }}
-              className={`flex items-center justify-center rounded-[24px] border border-slate-200/70 bg-white/95 p-4 ${cardShadow} ${cardHover}`}
+              className={`flex flex-col overflow-hidden rounded-[24px] border border-slate-200/70 bg-white/95 p-5 ${cardShadow} ${cardHover}`}
             >
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-[14px] font-black text-slate-800 tracking-[-0.02em]">실시간 CCTV</p>
+                
+                <div className="flex items-center gap-3">
+                  {/* LIVE 깜빡임 뱃지 */}
+                  <div className="flex items-center gap-2 rounded-full bg-rose-50 px-2 py-0.5">
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75"></span>
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-500"></span>
+                    </span>
+                    <span className="text-[10px] font-bold tracking-wider text-rose-600">LIVE</span>
+                  </div>
+                  
+                  {/* 💡 전체화면 버튼 */}
+                  <button
+                    onClick={handleFullscreen}
+                    className="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none"
+                    title="전체화면"
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+              
+              {/* 💡 영상 플레이어 영역 (여기에 ref 추가) */}
+              <div 
+                ref={cctvContainerRef} 
+                className="relative min-h-0 flex-1 w-full overflow-hidden rounded-xl bg-slate-900 shadow-inner group"
+              >
+                <iframe
+                  src={`http://${RPI_IP}:8889/cam`}
+                  width="100%"
+                  height="100%"
+                  frameBorder="0"
+                  scrolling="no"
+                  allowFullScreen
+                  title="CCTV Stream"
+                  className="absolute inset-0 h-full w-full border-none object-contain bg-black"
+                ></iframe>
+              </div>
             </motion.div>
           </motion.section>
 
+          {/* 가장 아랫단 빈 박스는 그대로 유지 */}
           <motion.section variants={riseIn} className="col-start-2 col-end-4 flex h-full min-h-0 w-full">
             <motion.div
               whileHover={{ scale: 1.01, y: -2 }}
