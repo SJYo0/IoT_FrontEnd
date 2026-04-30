@@ -13,14 +13,12 @@ public class SensorDataDTO {
     private double temperature;
     private double humidity;
     private double pressure;
-    private int tvoc;
-    private int eco2;
-    private int flameValue;
-
-    // C++ 게이트웨이에서 JSON으로 보내는 Unix Timestamp(밀리초)를 그대로 받음
+    private Integer tvoc;
+    private Integer eco2;
+    private Integer flameValue;
     private long timestamp;
 
-    // 💡 백엔드 서비스(Entity 변환 등)에서 호출할 편의 메서드
+    // 날짜 자료형 변환
     public LocalDateTime getMeasuredAt() {
         return LocalDateTime.ofInstant(
                 Instant.ofEpochMilli(this.timestamp),
