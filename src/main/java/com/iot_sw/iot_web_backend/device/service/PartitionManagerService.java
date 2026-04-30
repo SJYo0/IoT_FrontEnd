@@ -20,7 +20,7 @@ public class PartitionManagerService {
     // 서버 구동 시 최초 1회 실행
     @EventListener(ApplicationReadyEvent.class)
     public void initPartition() {
-        log.info("[Partition] 시스템 초기 파티션 체크 시작...");
+        log.info("[DB] 시스템 초기 파티션 체크 시작...");
         createPartitionForDate(LocalDate.now()); // 오늘자 파티션
         createPartitionForDate(LocalDate.now().plusDays(1)); // 내일자 파티션 (안전빵)
     }

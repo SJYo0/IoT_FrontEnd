@@ -29,6 +29,7 @@ public class DeviceMqttService {
     private final DeviceService deviceService;
     private final SensorRepository sensorRepository;
     private final ObjectMapper objectMapper;
+    private final AlertService alertService;
 
     private final List<SensorTelemetry> buffer = Collections.synchronizedList(new ArrayList<>()); // 안전 큐 느낌
 
@@ -94,6 +95,12 @@ public class DeviceMqttService {
 
                     // 4. TODO: 비정상 데이터(화재 감지 등) 실시간 알람 로직
                     // if (sensorData.getFlameValue() < 500) { alertService.triggerFireAlarm(macAddress); }
+                    alertService.checkFireDanger(macAddress, dto);
+                    alertService.checkTemperature(macAddress, dto);
+                    alertService.checkHumidity(macAddress, dto);
+                    alertService.checkTvoc(macAddress, dto);
+                    alertService.checkEco2(macAddress, dto);
+
                 }
             }
         } catch (Exception e) {

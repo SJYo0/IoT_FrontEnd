@@ -25,7 +25,7 @@ public class Device {
     @Column(length = 15)
     private String ipAddress; // 기기 연결 IP
 
-    @Column(unique = true, nullable = false, length = 20)
+    @Column(name = "mac_id", unique = true, nullable = false, length = 20)
     private String macId; // 기기 MAC 주소
 
     @Enumerated(EnumType.STRING)
