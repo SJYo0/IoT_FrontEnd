@@ -76,6 +76,7 @@ function SemiGaugeCard({ title, value, unit, min, max, sublabel, alertSeverity, 
   const cy = 66;
   const rOuter = 54;
   const rInner = 38;
+  const needleLength = rInner - 8;
 
   const [nx, ny] = polar(cx, cy, rInner - 8, needleAngle);
 
@@ -221,6 +222,9 @@ function Weather() {
   const [mqttData, setMqttData] = useState(null);
   const [alarmByCategory, setAlarmByCategory] = useState({});
 
+  // 💡 [추가] CCTV 소스 주소를 관리할 state (초기값은 빈 문자열)
+  const [cctvSrc, setCctvSrc] = useState("");
+
   const navigate = useNavigate();
   
   // 💡 CCTV 전체화면을 위한 ref 생성
@@ -253,8 +257,18 @@ function Weather() {
     }
   };
 
+  // 💡 [추가] 대시보드 렌더링이 끝난 후 CCTV 연결 시작 (블로킹 방지)
   useEffect(() => {
-    const brokerHost = "vegetables-polyester-chair-mission.trycloudflare.com"; 
+    if (data) {
+      const timer = setTimeout(() => {
+        setCctvSrc(`http://${RPI_IP}:8889/cam`);
+      }, 500); // 0.5초 뒤에 렌더링
+      return () => clearTimeout(timer);
+    }
+  }, [data]);
+
+  useEffect(() => {
+    const brokerHost = "mit-favor-proc-containers.trycloudflare.com"; 
     const brokerPort = 443;
     const clientId = "react_client_" + Math.random().toString(16).substr(2, 8);
     const targetTopic = "gateway/+/telemetry";
@@ -420,7 +434,7 @@ function Weather() {
       sublabel: undefined,
     },
     {
-      title: "화염 감지",
+      title: "화재 감지",
       value: indoorFlame,
       unit: "",
       min: 0,
@@ -458,8 +472,8 @@ function Weather() {
     { label: "매우나쁨", icon: AlertTriangle, active: dashboardScore != null && mainLabel === "매우나쁨" },
   ];
 
-  const isAnyCritical = Object.values(activeAlerts).some(a => a.severity === "CRITICAL");
-  const isAnyWarning = Object.values(activeAlerts).some(a => a.severity === "WARNING");
+  const isAnyCritical = Object.values(alarmByCategory).some(a => a.severity === "CRITICAL");
+  const isAnyWarning = Object.values(alarmByCategory).some(a => a.severity === "WARNING");
 
   return (
     <div
@@ -611,21 +625,32 @@ function Weather() {
                 </div>
               </div>
               
-              {/* 💡 영상 플레이어 영역 (여기에 ref 추가) */}
+              {/* 💡 영상 플레이어 영역 */}
               <div 
                 ref={cctvContainerRef} 
                 className="relative min-h-0 flex-1 w-full overflow-hidden rounded-xl bg-slate-900 shadow-inner group"
               >
-                <iframe
-                  src={`http://${RPI_IP}:8889/cam`}
-                  width="100%"
-                  height="100%"
-                  frameBorder="0"
-                  scrolling="no"
-                  allowFullScreen
-                  title="CCTV Stream"
-                  className="absolute inset-0 h-full w-full border-none object-contain bg-black"
-                ></iframe>
+                {cctvSrc ? (
+                  <iframe
+                    src={cctvSrc}
+                    width="100%"
+                    height="100%"
+                    frameBorder="0"
+                    scrolling="no"
+                    allowFullScreen
+                    title="CCTV Stream"
+                    className="absolute inset-0 h-full w-full border-none object-contain bg-black"
+                  ></iframe>
+                ) : (
+                  // 영상 연결 대기 중일 때 보여줄 로딩 화면
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black">
+                    <span className="relative flex h-4 w-4 mb-3">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-slate-400 opacity-75"></span>
+                      <span className="relative inline-flex h-4 w-4 rounded-full bg-slate-500"></span>
+                    </span>
+                    <p className="text-sm font-semibold text-slate-400 animate-pulse">CCTV 연결 중...</p>
+                  </div>
+                )}
               </div>
             </motion.div>
           </motion.section>

@@ -15,9 +15,6 @@ const Sidebar = () => {
     y: 0,
   });
 
-  const hidePaths = ['/', '/signup'];
-  if (hidePaths.includes(location.pathname)) return null;
-
   const ICON_SIZE = 28;
   const DEVICE_PATH = "/device/approveReq";
 
@@ -40,6 +37,9 @@ const Sidebar = () => {
       window.removeEventListener("resize", closeMenu);
     };
   }, [deviceContextMenu.open]);
+
+  const hidePaths = ['/', '/signup'];
+  if (hidePaths.includes(location.pathname)) return null;
 
   const handleLogout = async () => {
     setLoggingOut(true);

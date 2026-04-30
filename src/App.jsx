@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {BrowserRouter, Navigate, Routes, Route} from 'react-router-dom';
+import {Navigate, Routes, Route} from 'react-router-dom';
 
 import Sidebar from './sidebar/sidebar';
 import TopSidebar from "./sidebar/TopSidebar";
@@ -47,7 +47,7 @@ function ProtectedRoute({ children }) {
 
 function App() {
   return (
-    <BrowserRouter>
+    <>
       
       {/* 전체화면 컨테이너 */}
       <div className="flex w-full h-screen overflow-hidden bg-slate-100">
@@ -109,7 +109,7 @@ function App() {
         </div>
 
       </div>
-    </BrowserRouter>
+    </>
   );
 }
 
