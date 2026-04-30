@@ -1,4 +1,9 @@
-const API_BASE_URL = "http://localhost:8080";
+const envBase =
+  typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE_URL
+    ? String(import.meta.env.VITE_API_BASE_URL).replace(/\/$/, "")
+    : null;
+export const API_BASE_URL =
+  envBase ?? (import.meta.env.DEV ? "" : "http://localhost:8080");
 
 let csrfTokenPromise = null;
 
@@ -20,6 +25,13 @@ export async function ensureCsrfToken() {
     })
       .then(async (response) => {
         if (!response.ok) {
+          if (import.meta.env.DEV) {
+            console.error(
+              "[api] /api/auth/csrf failed:",
+              response.status,
+              response.statusText
+            );
+          }
           throw new Error("CSRF 토큰을 불러오지 못했습니다.");
         }
 

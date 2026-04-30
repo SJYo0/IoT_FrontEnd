@@ -23,7 +23,7 @@ function Auth() {
     apiFetch("/api/auth/me")
       .then((response) => {
         if (active && response.ok) {
-          navigate("/weather", { replace: true });
+          navigate("/dashboard", { replace: true });
         }
       })
       .catch(() => {
@@ -62,7 +62,7 @@ function Auth() {
       }
 
       setMessage(await readApiMessage(res, "로그인 성공"));
-      navigate("/weather", { replace: true });
+      navigate("/dashboard", { replace: true });
     } catch {
       setMessage("서버에 연결할 수 없습니다.");
     } finally {
