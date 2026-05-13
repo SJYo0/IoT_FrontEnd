@@ -1,8 +1,6 @@
 package com.iot_sw.iot_web_backend.device.entity;
-
 import jakarta.persistence.*;
 import lombok.*;
-import org.springframework.data.domain.Persistable;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -13,15 +11,16 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-@IdClass(SensorTelemetryId.class) // 복합키 매핑
-public class SensorTelemetry implements Persistable<SensorTelemetryId> {
+public class SensorTelemetry {
 
     @Id
-    @Column(length = 17)
-    private String macAddress;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
-    @Id
-    private LocalDateTime measuredAt;
+    // 💡 단일 객체 연관관계로 변경
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "device_id", nullable = false)
+    private Device device;
 
     @Column(precision = 5, scale = 2)
     private BigDecimal temperature;
@@ -41,17 +40,6 @@ public class SensorTelemetry implements Persistable<SensorTelemetryId> {
     @Column(columnDefinition = "SMALLINT")
     private Integer flameValue;
 
-    @Transient
-    @Builder.Default
-    private boolean isNew = true;
-
-    @Override
-    public SensorTelemetryId getId() {
-        return new SensorTelemetryId(this.macAddress, this.measuredAt);
-    }
-
-    @Override
-    public boolean isNew() {
-        return this.isNew;
-    }
+    @Column(nullable = false)
+    private LocalDateTime measuredAt;
 }

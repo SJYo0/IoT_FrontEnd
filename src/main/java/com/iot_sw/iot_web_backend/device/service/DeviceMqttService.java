@@ -1,9 +1,12 @@
 package com.iot_sw.iot_web_backend.device.service;
 
+import com.iot_sw.iot_web_backend.device.component.DeviceIdCache;
 import com.iot_sw.iot_web_backend.device.dto.request.RegisterRequestDTO;
 import com.iot_sw.iot_web_backend.device.dto.request.SensorDataDTO;
 import com.iot_sw.iot_web_backend.device.dto.request.TurnOffRequestDTO;
+import com.iot_sw.iot_web_backend.device.entity.Device;
 import com.iot_sw.iot_web_backend.device.entity.SensorTelemetry;
+import com.iot_sw.iot_web_backend.device.repository.DeviceRepository;
 import com.iot_sw.iot_web_backend.device.repository.SensorRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +33,8 @@ public class DeviceMqttService {
     private final SensorRepository sensorRepository;
     private final ObjectMapper objectMapper;
     private final AlertService alertService;
+    private final DeviceIdCache deviceIdCache; // 맥주소 아이디 변환 캐시
+    private final DeviceRepository deviceRepository; // Device 프록시 조회
 
     private final List<SensorTelemetry> buffer = Collections.synchronizedList(new ArrayList<>()); // 안전 큐 느낌
 
@@ -70,13 +75,25 @@ public class DeviceMqttService {
                 if (topicParts.length == 3) {
                     String macAddress = topicParts[1];
 
+                    // 기기 아이디 조회
+                    Long deviceId = deviceIdCache.getDeviceId(macAddress);
+
+                    // 아이디 조회 예외처리
+                    if (deviceId == null) {
+                        log.info("[System] 존재하지 않은 기기의 데이터입니다. MAC: {}", macAddress);
+                        return;
+                    }
+
                     SensorDataDTO dto = objectMapper.readValue(payload, SensorDataDTO.class);
 
                     log.info("[센서 수신] MAC: {}, 온도: {}C, TVOC: {}", macAddress, dto.getTemperature(), dto.getTvoc());
 
+                    // DB 퀴리 동작을 피하기 위한 프록시 활용
+                    Device deviceProxy = deviceRepository.getReferenceById(deviceId);
+
                     // DB 배치 인서트 로직
                     SensorTelemetry entity = SensorTelemetry.builder()
-                            .macAddress(macAddress)
+                            .device(deviceProxy)
                             .measuredAt(dto.getMeasuredAt()) // 날짜 자료형 변환
                             .temperature(BigDecimal.valueOf(dto.getTemperature()))
                             .humidity(BigDecimal.valueOf(dto.getHumidity()))
@@ -93,7 +110,7 @@ public class DeviceMqttService {
                         flushBuffer();
                     }
 
-                    // 4. TODO: 비정상 데이터(화재 감지 등) 실시간 알람 로직
+                    // 비정상 데이터 감지 로직
                     // if (sensorData.getFlameValue() < 500) { alertService.triggerFireAlarm(macAddress); }
                     alertService.checkFireDanger(macAddress, dto);
                     alertService.checkTemperature(macAddress, dto);

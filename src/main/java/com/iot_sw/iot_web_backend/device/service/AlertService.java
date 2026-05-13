@@ -1,11 +1,22 @@
 package com.iot_sw.iot_web_backend.device.service;
 
+import com.iot_sw.iot_web_backend.AiService.dto.request.AnalysisRequestDto;
+import com.iot_sw.iot_web_backend.AiService.service.AnalysisService;
+import com.iot_sw.iot_web_backend.dashboard.entity.WeatherData;
+import com.iot_sw.iot_web_backend.dashboard.repository.WeatherRepository;
+import com.iot_sw.iot_web_backend.device.component.DeviceIdCache;
 import com.iot_sw.iot_web_backend.device.dto.request.SensorDataDTO;
 import com.iot_sw.iot_web_backend.device.entity.AlertLog;
+import com.iot_sw.iot_web_backend.device.entity.Device;
 import com.iot_sw.iot_web_backend.device.enums.AlertCategory;
 import com.iot_sw.iot_web_backend.device.enums.AlertSeverity;
 import com.iot_sw.iot_web_backend.device.repository.AlertLogRepository;
+import com.iot_sw.iot_web_backend.device.repository.DeviceRepository;
 import com.iot_sw.iot_web_backend.mqtt.MqttGateway;
+import com.iot_sw.iot_web_backend.setting.entity.ControlStatus;
+import com.iot_sw.iot_web_backend.setting.entity.Environment;
+import com.iot_sw.iot_web_backend.setting.repository.ControlStatusRepository;
+import com.iot_sw.iot_web_backend.setting.repository.EnvironmentRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 @Slf4j
 @RequiredArgsConstructor
+@Transactional
 public class AlertService {
     // 연속 감지 카운터
     private final ConcurrentHashMap<String, Integer> fireCountMap = new ConcurrentHashMap<>();
@@ -36,6 +48,13 @@ public class AlertService {
 
     private final MqttGateway mqttGateway;
     private final AlertLogRepository alertLogRepository;
+    private final DeviceIdCache deviceIdCache;
+    private final DeviceRepository deviceRepository;
+
+    private final AnalysisService analysisService;
+    private final EnvironmentRepository environmentRepository;
+    private final ControlStatusRepository controlStatusRepository;
+    private final WeatherRepository weatherRepository;
 
     // 화재 감지
     public void checkFireDanger(String mac, SensorDataDTO dto) {
@@ -47,7 +66,7 @@ public class AlertService {
         if (flame < 300) { currentSeverity = "CRITICAL"; message = "화재 발생! 즉시 대피!"; }
         else if (flame < 500) { currentSeverity = "WARNING"; message = "화재 의심! 현장 확인 요망."; }
 
-        processAlert(mac, "FIRE", currentSeverity, message, fireCountMap, fireSeverityMap);
+        processAlert(mac, "FIRE", currentSeverity, message, fireCountMap, fireSeverityMap, dto);
     }
 
     // 온도 감지
@@ -64,7 +83,7 @@ public class AlertService {
             message = (temp > 30) ? "실내 온도 높음." : "실내 온도 낮음.";
         }
 
-        processAlert(mac, "TEMP", currentSeverity, message, tempCountMap, tempSeverityMap);
+        processAlert(mac, "TEMP", currentSeverity, message, tempCountMap, tempSeverityMap, dto);
     }
 
     // 습도 감지
@@ -73,12 +92,12 @@ public class AlertService {
         String currentSeverity = "NORMAL";
         String message = "습도 정상 범위.";
 
-        if (hum > 70 || hum < 30) {
+        if (hum > 60 || hum < 40) {
             currentSeverity = "WARNING"; // 습도는 기획상 CRITICAL 없이 WARNING만 존재
-            message = (hum > 70) ? "다습 주의! 장비 손상 위험." : "건조 주의! 화재 위험 주의.";
+            message = (hum > 60) ? "다습 주의! 장비 손상 위험." : "건조 주의! 화재 위험 주의.";
         }
 
-        processAlert(mac, "HUMIDITY", currentSeverity, message, humCountMap, humSeverityMap);
+        processAlert(mac, "HUMIDITY", currentSeverity, message, humCountMap, humSeverityMap, dto);
     }
 
     // TVOC 감지
@@ -91,7 +110,7 @@ public class AlertService {
         if (tvoc > 1000) { currentSeverity = "CRITICAL"; message = "유해 화학물질 매우 높음!"; }
         else if (tvoc > 500) { currentSeverity = "WARNING"; message = "화학물질 수치 주의."; }
 
-        processAlert(mac, "TVOC", currentSeverity, message, tvocCountMap, tvocSeverityMap);
+        processAlert(mac, "TVOC", currentSeverity, message, tvocCountMap, tvocSeverityMap, dto);
     }
 
     // eCO2 감지
@@ -104,13 +123,14 @@ public class AlertService {
         if (eco2 > 1500) { currentSeverity = "CRITICAL"; message = "이산화탄소 위험 수치! 즉시 환기 요망."; }
         else if (eco2 > 1000) { currentSeverity = "WARNING"; message = "이산화탄소 수치 높음. 환기 권장."; }
 
-        processAlert(mac, "ECO2", currentSeverity, message, eco2CountMap, eco2SeverityMap);
+        processAlert(mac, "ECO2", currentSeverity, message, eco2CountMap, eco2SeverityMap, dto);
     }
 
     // 공통 알림 처리 로직
     private void processAlert(String mac, String category, String currentSeverity, String message,
                               ConcurrentHashMap<String, Integer> countMap,
-                              ConcurrentHashMap<String, String> severityMap) {
+                              ConcurrentHashMap<String, String> severityMap,
+                              SensorDataDTO dto) {
 
         String previousSeverity = severityMap.getOrDefault(mac, "NORMAL");
 
@@ -120,7 +140,7 @@ public class AlertService {
 
             if (count >= DANGER_THRESHOLD) {
                 if (!currentSeverity.equals(previousSeverity)) {
-                    triggerAlarm(mac, category, currentSeverity, message);
+                    triggerAlarm(mac, category, currentSeverity, message, dto);
                     severityMap.put(mac, currentSeverity);
                 }
                 countMap.put(mac, 0); // 처리 후 카운트 초기화
@@ -131,7 +151,7 @@ public class AlertService {
 
             // 이전에 알람이 울린 적이 있었다면 정상 복귀 알림 전송
             if (!previousSeverity.equals("NORMAL")) {
-                triggerAlarm(mac, category, "NORMAL", message);
+                triggerAlarm(mac, category, "NORMAL", message, dto);
                 severityMap.put(mac, "NORMAL");
             }
         }
@@ -139,8 +159,19 @@ public class AlertService {
 
     // 알람 발생 (MQTT 발행 & DB 저장/업데이트)
     @Transactional
-    protected void triggerAlarm(String macAddress, String categoryStr, String severityStr, String message) {
+    protected void triggerAlarm(String macAddress, String categoryStr, String severityStr, String message, SensorDataDTO dto) {
         log.warn("[Alert] 기기: {}, 카테고리: {}, 등급: {}, 내용: {}", macAddress, categoryStr, severityStr, message);
+
+        // 캐시에서 ID 찾기
+        Long deviceId = deviceIdCache.getDeviceId(macAddress);
+        if (deviceId == null) {
+            log.warn("알람 저장 실패 - 미등록 기기: {}", macAddress);
+            return;
+        }
+
+        // 프록시 객체 생성
+        Device deviceProxy = deviceRepository.getReferenceById(deviceId);
+        AlertCategory category = AlertCategory.valueOf(categoryStr);
 
         // MQTT 발행
         String alarmTopic = "webbackend/alarm/" + macAddress;
@@ -151,17 +182,16 @@ public class AlertService {
         mqttGateway.sendToMqtt(payload, alarmTopic);
 
         // DB 저장
-        AlertCategory category = AlertCategory.valueOf(categoryStr);
 
         if (severityStr.equals("NORMAL")) {
-            alertLogRepository.resolveActiveAlerts(macAddress, category, LocalDateTime.now());
+            alertLogRepository.resolveActiveAlertsByDevice(deviceProxy, category, LocalDateTime.now());
             log.info("[DB] 기기 {}의 {} 상황 종료", macAddress, categoryStr);
         } else {
-            alertLogRepository.resolveActiveAlerts(macAddress, category, LocalDateTime.now());
+            alertLogRepository.resolveActiveAlertsByDevice(deviceProxy, category, LocalDateTime.now());
 
             try {
                 AlertLog alertLog = AlertLog.builder()
-                        .macAddress(macAddress)
+                        .device(deviceProxy)
                         .category(category)
                         .severity(AlertSeverity.valueOf(severityStr))
                         .message(message)
@@ -174,6 +204,91 @@ public class AlertService {
             } catch (IllegalArgumentException e) {
                 log.error("[DB] 오류발생: {}", e.getMessage());
             }
+        }
+
+        buildAndRequestAiAnalysis(deviceId, macAddress, categoryStr, severityStr, dto);
+    }
+
+    public void buildAndRequestAiAnalysis(Long deviceId, String macAddress, String category, String severity, SensorDataDTO sensorDto) {
+        try {
+            // 1. DB에서 기기 설치 유무(Setting) 및 현재 상태(Control) 조회
+            Environment env = environmentRepository.findByDeviceId(deviceId).orElse(null);
+            ControlStatus status = controlStatusRepository.findByDeviceId(deviceId).orElse(null);
+
+            if (env == null || status == null) {
+                log.warn("[AI] 기기 {}의 환경/상태 데이터가 없어 AI 분석을 스킵합니다.", deviceId);
+                return;
+            }
+
+            // 2. 🌟 최신 날씨 데이터(Outdoor) 조회
+            WeatherData weather = weatherRepository.findTopByOrderByCreatedAtDesc().orElse(null);
+            AnalysisRequestDto.Outdoor outdoorDto;
+
+            if (weather != null) {
+                outdoorDto = AnalysisRequestDto.Outdoor.builder()
+                        .ta(weather.getTempTa())
+                        .wd(weather.getWindDirWd())
+                        .ws(weather.getWindSpeedWs())
+                        .hm(weather.getHumidityHm())
+                        .rn(weather.getPrecipitationRn())
+                        // Byte 타입(1=True, 0=False)을 Boolean으로 안전하게 변환
+                        .isSW(weather.getIsStrongWindWarning() != null && weather.getIsStrongWindWarning() > 0)
+                        .isDW(weather.getIsDryWarning() != null && weather.getIsDryWarning() > 0)
+                        .build();
+            } else {
+                log.warn("[AI] 최신 날씨 데이터를 찾을 수 없어 기본값(null)으로 진행합니다.");
+                outdoorDto = AnalysisRequestDto.Outdoor.builder().build(); // 빈 객체 할당
+            }
+
+            // 3. DTO 조립
+            AnalysisRequestDto requestDto = AnalysisRequestDto.builder()
+                    .macAddress(macAddress)
+                    .indoor(AnalysisRequestDto.Indoor.builder()
+                            .temperature(sensorDto.getTemperature())
+                            .humidity(sensorDto.getHumidity())
+                            .pressure(sensorDto.getPressure())
+                            .tvoc(sensorDto.getTvoc())
+                            .eco2(sensorDto.getEco2())
+                            .flame(sensorDto.getFlameValue())
+                            .build())
+                    .outdoor(outdoorDto) // 🌟 조립된 날씨 객체 주입
+                    .setting(AnalysisRequestDto.Setting.builder()
+                            .north_window(env.getNorthWindow())
+                            .south_window(env.getSouthWindow())
+                            .east_window(env.getEastWindow())
+                            .west_window(env.getWestWindow())
+                            .air_conditioner(env.getAirConditioner())
+                            .heating(env.getHeating())
+                            .humidifier(env.getHumidifier())
+                            .dehumidifier(env.getDehumidifier())
+                            .air_cleaner(env.getAirCleaner())
+                            .sprinkler(env.getSprinkler())
+                            .fire_alarm(env.getFireAlarm())
+                            .build())
+                    .control(AnalysisRequestDto.Control.builder()
+                            .north_window(status.getNorthWindow())
+                            .south_window(status.getSouthWindow())
+                            .east_window(status.getEastWindow())
+                            .west_window(status.getWestWindow())
+                            .air_conditioner(status.getAirConditioner())
+                            .heating(status.getHeating())
+                            .humidifier(status.getHumidifier())
+                            .dehumidifier(status.getDehumidifier())
+                            .air_cleaner(status.getAirCleaner())
+                            .sprinkler(status.getSprinkler())
+                            .fire_alarm(status.getFireAlarm())
+                            .build())
+                    .alert(AnalysisRequestDto.Alert.builder()
+                            .category(category)
+                            .severity(severity)
+                            .build())
+                    .build();
+
+            // 4. AnalysisService로 AI 요청 던지기
+            analysisService.requestAiAnalysis(deviceId, requestDto);
+
+        } catch (Exception e) {
+            log.error("[AI] DTO 조립 중 오류 발생: {}", e.getMessage(), e);
         }
     }
 }
