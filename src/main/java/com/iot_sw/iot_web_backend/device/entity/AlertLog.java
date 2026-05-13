@@ -8,7 +8,12 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "alert_log")
+@Table(name = "alert_log", indexes = {
+        @Index(name = "idx_alert_created_at", columnList = "created_at DESC"),
+        @Index(name = "idx_alert_device_severity", columnList = "device_id, severity"),
+        @Index(name = "idx_alert_is_read", columnList = "is_read"),
+        @Index(name = "idx_alert_resolved_at", columnList = "resolved_at")
+})
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
@@ -19,14 +24,9 @@ public class AlertLog {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // 외래키 직접 매핑 (조회용)
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "mac_address", referencedColumnName = "mac_id", insertable = false, updatable = false)
+    @JoinColumn(name = "device_id", nullable = false)
     private Device device;
-
-    // 실제 INSERT할 때 사용할 컬럼
-    @Column(name = "mac_address", length = 20, nullable = false)
-    private String macAddress;
 
     @Enumerated(EnumType.STRING)
     @Column(length = 30, nullable = false)
@@ -41,9 +41,9 @@ public class AlertLog {
 
     @Builder.Default
     @Column(name = "is_read", nullable = false)
-    private boolean isRead = false; // 기본값 미확인(false)
+    private boolean isRead = false;
 
-    @Column(name = "created_at", nullable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     @Column(name = "resolved_at")
