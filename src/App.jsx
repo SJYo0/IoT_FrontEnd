@@ -10,7 +10,9 @@ import Auth from './Auth/Auth';
 import Signup from './Auth/Signup';
 import Weather from './DashBoard/Weather';
 import CctvPage from './CCTV/CctvPage';
+import HistoryPage from "./history/HistoryPage";
 import SettingsPage from "./settings/SettingsPage";
+import EnvControlPage from "./envControl/EnvControlPage";
 import { apiFetch } from "./Auth/api";
 
 function ProtectedRoute({ children }) {
@@ -93,6 +95,22 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <CctvPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/env-control"
+                element={
+                  <ProtectedRoute>
+                    <EnvControlPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/history"
+                element={
+                  <ProtectedRoute>
+                    <HistoryPage />
                   </ProtectedRoute>
                 }
               />
