@@ -1,6 +1,7 @@
 package com.iot_sw.iot_web_backend.mqtt;
 
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.integration.annotation.IntegrationComponentScan;
@@ -20,17 +21,24 @@ import org.springframework.messaging.MessageHandler;
 @IntegrationComponentScan(basePackages = "com.iot_sw.iot_web_backend")
 public class MqttConfig {
 
-    private static final String BROKER_URL = "tcp://localhost:1883";
-    // 브로커에 메세지를 발행하는 주체
-    private static final String CLIENT_ID = "spring-boot-server-outbound";
+    @Value("${app.mqtt.broker-url:tcp://localhost:1883}")
+    private String brokerUrl;
+
+    @Value("${app.mqtt.outbound-client-id:spring-boot-server-outbound}")
+    private String outboundClientId;
+
+    @Value("${app.mqtt.inbound-client-id:spring-boot-server-inbound}")
+    private String inboundClientId;
 
     // MQTT 브로커 연결 설정
     @Bean
     public MqttPahoClientFactory mqttClientFactory() {
         DefaultMqttPahoClientFactory factory = new DefaultMqttPahoClientFactory();
         MqttConnectOptions options = new MqttConnectOptions();
-        options.setServerURIs(new String[] { BROKER_URL });
+        options.setServerURIs(new String[] { brokerUrl });
         options.setCleanSession(true);
+        options.setAutomaticReconnect(true);
+        options.setConnectionTimeout(5);
         factory.setConnectionOptions(options);
         return factory;
     }
@@ -46,7 +54,7 @@ public class MqttConfig {
     @ServiceActivator(inputChannel = "mqttOutboundChannel")
     public MessageHandler mqttOutbound() {
         MqttPahoMessageHandler messageHandler =
-                new MqttPahoMessageHandler(CLIENT_ID, mqttClientFactory());
+                new MqttPahoMessageHandler(outboundClientId, mqttClientFactory());
         messageHandler.setAsync(true);
         messageHandler.setDefaultTopic("default/topic"); // 디폴트 토픽
         return messageHandler;
@@ -63,7 +71,7 @@ public class MqttConfig {
     public MessageProducer inbound() {
         // "spring-boot-server-inbound" 클라이언트가 특정 토픽들을 구독
         MqttPahoMessageDrivenChannelAdapter adapter =
-                new MqttPahoMessageDrivenChannelAdapter("spring-boot-server-inbound", mqttClientFactory(),
+                new MqttPahoMessageDrivenChannelAdapter(inboundClientId, mqttClientFactory(),
                         "provisioning/request", "gateway/+/telemetry", "devices/status");
 
         adapter.setCompletionTimeout(5000);
