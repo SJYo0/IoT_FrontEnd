@@ -60,6 +60,7 @@ public class AnalysisService {
     protected void handleAiResponse(Long deviceId, AnalysisRequestDto requestDto, AnalysisResponseDto aiResult) {
         try {
             Device deviceProxy = deviceRepository.getReferenceById(deviceId);
+            String targetMacAddress = resolveMacAddress(aiResult, requestDto, deviceProxy);
 
             // 1. AI 분석 결과 저장 (AiAnalysis)
             Map<String, Object> inputDataMap = objectMapper.convertValue(requestDto, Map.class);
@@ -78,11 +79,12 @@ public class AnalysisService {
             // 프론트엔드 대시보드 리포트 업데이트용
             // =========================================================
             Map<String, Object> analysisPayloadMap = new HashMap<>();
+            analysisPayloadMap.put("macAddress", targetMacAddress);
             analysisPayloadMap.put("status", aiResult.getStatus());
             analysisPayloadMap.put("summary", aiResult.getSummary());
 
             String analysisPayload = objectMapper.writeValueAsString(analysisPayloadMap);
-            String analysisTopic = "webbackend/analysis/" + aiResult.getMacAddress();
+            String analysisTopic = "webbackend/analysis/" + targetMacAddress;
             mqttGateway.sendToMqtt(analysisPayload, analysisTopic);
             log.info("[AI -> MQTT] 분석 결과(리포트) 전송 완료: {}", analysisTopic);
 
@@ -94,7 +96,7 @@ public class AnalysisService {
             String controlPayload = objectMapper.writeValueAsString(controlDto);
 
             if (!"{}".equals(controlPayload)) {
-                String controlTopic = "webbackend/control/" + aiResult.getMacAddress();
+                String controlTopic = "webbackend/control/" + targetMacAddress;
                 mqttGateway.sendToMqtt(controlPayload, controlTopic);
                 log.info("[AI -> MQTT] 제어 명령 전송 완료: {}", controlTopic);
 
@@ -107,6 +109,19 @@ public class AnalysisService {
         } catch (Exception e) {
             log.error("[AI] 응답 처리 중 오류 발생: {}", e.getMessage());
         }
+    }
+
+    private String resolveMacAddress(AnalysisResponseDto aiResult, AnalysisRequestDto requestDto, Device deviceProxy) {
+        if (aiResult != null && aiResult.getMacAddress() != null && !aiResult.getMacAddress().isBlank()) {
+            return aiResult.getMacAddress().trim().toUpperCase();
+        }
+        if (requestDto != null && requestDto.getMacAddress() != null && !requestDto.getMacAddress().isBlank()) {
+            return requestDto.getMacAddress().trim().toUpperCase();
+        }
+        if (deviceProxy != null && deviceProxy.getMacId() != null && !deviceProxy.getMacId().isBlank()) {
+            return deviceProxy.getMacId().trim().toUpperCase();
+        }
+        throw new IllegalStateException("AI 분석 결과를 전송할 MAC 주소를 확인할 수 없습니다.");
     }
 
     // 제어 명령 히스토리 기록
