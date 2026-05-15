@@ -358,7 +358,7 @@ function Weather() {
   }, []);
 
   useEffect(() => {
-    const brokerHost = "constraints-messages-annie-kinda.trycloudflare.com";
+    const brokerHost = "poor-pregnant-aaa-divorce.trycloudflare.com";
     const brokerPort = 443;
     const clientId = "react_client_" + Math.random().toString(16).substr(2, 8);
     const targetTopic = "gateway/+/telemetry";
