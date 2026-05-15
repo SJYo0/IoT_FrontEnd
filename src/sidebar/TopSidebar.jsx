@@ -1,275 +1,337 @@
 import { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
+import { AlertTriangle, Bell, ChevronDown, Info } from "lucide-react";
 import { useLocation } from "react-router-dom";
+import { apiFetch } from "../Auth/api";
 
-const DEVICES_STORAGE_KEY = "iot.connectedDevices";
-const SELECTED_DEVICE_KEY = "iot.selectedDeviceId";
+const SELECTED_DEVICE_MAC_KEY = "iot.selectedDeviceMac";
 
-function parseDevices(raw) {
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
+function createStableId(prefix) {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
   }
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function normalizeDevices(devices) {
-  return devices.map((device) => ({
-    ...device,
-    name: device?.name === "Device-A" ? "Device" : device?.name || "Device",
-  }));
+function formatAgoText(createdAt) {
+  const ts = createdAt ? new Date(createdAt).getTime() : NaN;
+  if (!Number.isFinite(ts)) return "방금 전";
+  const diffMin = Math.max(0, Math.floor((Date.now() - ts) / 60000));
+  if (diffMin < 1) return "방금 전";
+  if (diffMin < 60) return `${diffMin}분 전`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour}시간 전`;
+  return `${Math.floor(diffHour / 24)}일 전`;
 }
 
-function loadDevices() {
-  const sessionDevices = normalizeDevices(parseDevices(sessionStorage.getItem(DEVICES_STORAGE_KEY)));
-  if (sessionDevices.length > 0) return sessionDevices;
-  return normalizeDevices(parseDevices(localStorage.getItem(DEVICES_STORAGE_KEY)));
-}
-
-function persistDevices(devices) {
-  const serialized = JSON.stringify(devices);
-  localStorage.setItem(DEVICES_STORAGE_KEY, serialized);
-  sessionStorage.setItem(DEVICES_STORAGE_KEY, serialized);
-}
-
-function loadSelectedId() {
-  return sessionStorage.getItem(SELECTED_DEVICE_KEY) || localStorage.getItem(SELECTED_DEVICE_KEY) || "";
-}
-
-function persistSelectedId(deviceId) {
-  localStorage.setItem(SELECTED_DEVICE_KEY, deviceId);
-  sessionStorage.setItem(SELECTED_DEVICE_KEY, deviceId);
+function alertText(alert) {
+  if (alert?.message) return alert.message;
+  if (alert?.category) return `${alert.category} 경고`;
+  return "알람이 발생했습니다.";
 }
 
 function TopSidebar() {
   const location = useLocation();
   const hidePaths = ["/", "/signup"];
   const shouldHide = hidePaths.includes(location.pathname);
-  const [expanded, setExpanded] = useState(false);
-  const [infoDeviceId, setInfoDeviceId] = useState("");
-  const [contextMenu, setContextMenu] = useState(null);
-  const [showInfoPanel, setShowInfoPanel] = useState(false);
-  const [now, setNow] = useState(() => new Date());
-  const [devices, setDevices] = useState(() => {
-    const loaded = loadDevices();
-    if (loaded.length > 0) return loaded;
-    const fallback = [
-      {
-        id: "device-sample-1",
-        name: "Device",
-        mac: "00:00:00:00:00:00",
-        ip: "0.0.0.0",
-        online: false,
-      },
-    ];
-    persistDevices(fallback);
-    return fallback;
-  });
-  const [selectedDeviceId, setSelectedDeviceId] = useState(() => loadSelectedId());
+  const [currentUsername, setCurrentUsername] = useState("");
+  const [alarmExpanded, setAlarmExpanded] = useState(false);
+  const [deviceExpanded, setDeviceExpanded] = useState(false);
+  const [recentAlerts, setRecentAlerts] = useState([]);
+  const [sessionDevices, setSessionDevices] = useState([]);
+  const [selectedDeviceIdx, setSelectedDeviceIdx] = useState(0);
 
   useEffect(() => {
-    persistDevices(devices);
-  }, [devices]);
+    if (shouldHide) return;
 
-  useEffect(() => {
-    if (!selectedDeviceId && devices.length > 0) {
-      setSelectedDeviceId(devices[0].id);
-      return;
-    }
-    if (selectedDeviceId && !devices.some((device) => device.id === selectedDeviceId)) {
-      setSelectedDeviceId(devices[0]?.id ?? "");
-    }
-  }, [devices, selectedDeviceId]);
+    let active = true;
+    const loadCurrentUser = async () => {
+      try {
+        const response = await apiFetch("/api/auth/me");
+        if (!response.ok) return;
 
-  useEffect(() => {
-    persistSelectedId(selectedDeviceId);
-  }, [selectedDeviceId]);
-
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    const closeMenu = () => setContextMenu(null);
-    window.addEventListener("click", closeMenu);
-    return () => window.removeEventListener("click", closeMenu);
-  }, []);
-
-  useEffect(() => {
-    // 다른 화면/소스에서 연결 이벤트를 발생시키면 저장 목록 갱신
-    // window.dispatchEvent(new CustomEvent("iot-device-connected", { detail: { name, mac, ip, online } }))
-    const onDeviceConnected = (event) => {
-      const detail = event?.detail ?? {};
-      if (!detail.name || !detail.mac || !detail.ip) return;
-      setDevices((prev) => {
-        const existing = prev.find((d) => d.mac === detail.mac);
-        if (existing) {
-          return prev.map((d) =>
-            d.mac === detail.mac
-              ? { ...d, name: detail.name, ip: detail.ip, online: detail.online !== false }
-              : d,
-          );
+        const payload = await response.json();
+        if (!active) return;
+        setCurrentUsername(typeof payload?.username === "string" ? payload.username : "");
+        const parsedDevices = Array.isArray(payload?.devices)
+          ? payload.devices
+              .map((item) => ({
+                mac: typeof item?.mac === "string" ? item.mac : "",
+                ip: typeof item?.ip === "string" ? item.ip : "",
+                online: item?.online === true,
+              }))
+              .filter((item) => item.mac || item.ip)
+          : [];
+        if (parsedDevices.length > 0) {
+          setSessionDevices(parsedDevices);
+          const savedMac =
+            sessionStorage.getItem(SELECTED_DEVICE_MAC_KEY) ||
+            localStorage.getItem(SELECTED_DEVICE_MAC_KEY) ||
+            "";
+          const defaultIdx = savedMac
+            ? Math.max(
+                0,
+                parsedDevices.findIndex((item) => String(item.mac || "").trim() === savedMac),
+              )
+            : 0;
+          setSelectedDeviceIdx(defaultIdx);
+        } else {
+          const single = {
+            mac: typeof payload?.deviceMac === "string" ? payload.deviceMac : "",
+            ip: typeof payload?.deviceIp === "string" ? payload.deviceIp : "",
+            online: false,
+          };
+          setSessionDevices(single.mac || single.ip ? [single] : []);
+          setSelectedDeviceIdx(0);
         }
-        return [
-          ...prev,
+      } catch {
+        if (active) {
+          setCurrentUsername("");
+          setSessionDevices([]);
+          setSelectedDeviceIdx(0);
+        }
+      }
+    };
+
+    loadCurrentUser();
+
+    return () => {
+      active = false;
+    };
+  }, [shouldHide, location.pathname]);
+
+  useEffect(() => {
+    const closeMenus = () => {
+      setAlarmExpanded(false);
+      setDeviceExpanded(false);
+    };
+    window.addEventListener("click", closeMenus);
+    return () => window.removeEventListener("click", closeMenus);
+  }, []);
+
+  useEffect(() => {
+    // window.dispatchEvent(new CustomEvent("iot-alert-raised", { detail: { category, severity, message, timestamp } }))
+    const onAlertRaised = (event) => {
+      const detail = event?.detail ?? {};
+      if (!detail.category || !detail.severity) return;
+      if (detail.severity !== "WARNING" && detail.severity !== "CRITICAL") return;
+
+      const createdAt = detail.timestamp ? new Date(detail.timestamp) : new Date();
+      setRecentAlerts((prev) => {
+        const next = [
           {
-            id: crypto.randomUUID(),
-            name: detail.name,
-            mac: detail.mac,
-            ip: detail.ip,
-            online: detail.online !== false,
+            id: createStableId("alert"),
+            category: detail.category,
+            severity: detail.severity,
+            message: detail.message || "",
+            createdAt: createdAt.toISOString(),
+            read: false,
           },
+          ...prev,
         ];
+        return next.slice(0, 20);
       });
     };
 
-    window.addEventListener("iot-device-connected", onDeviceConnected);
-    return () => window.removeEventListener("iot-device-connected", onDeviceConnected);
+    window.addEventListener("iot-alert-raised", onAlertRaised);
+    return () => window.removeEventListener("iot-alert-raised", onAlertRaised);
   }, []);
 
-  const selectedDevice = useMemo(
-    () => devices.find((device) => device.id === selectedDeviceId) || devices[0] || null,
-    [devices, selectedDeviceId],
-  );
-  const infoDevice = useMemo(
-    () => devices.find((device) => device.id === infoDeviceId) || null,
-    [devices, infoDeviceId],
-  );
-  const nowText = useMemo(() => {
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, "0");
-    const day = String(now.getDate()).padStart(2, "0");
-    const hour = String(now.getHours()).padStart(2, "0");
-    const minute = String(now.getMinutes()).padStart(2, "0");
-    const second = String(now.getSeconds()).padStart(2, "0");
-    return `${year}년 ${month}월 ${day}일 ${hour}시 ${minute}분 ${second}초`;
-  }, [now]);
+  const unreadAlerts = useMemo(() => recentAlerts.filter((alert) => !alert.read).length, [recentAlerts]);
+  const selectedDevice = sessionDevices[selectedDeviceIdx] || sessionDevices[0] || null;
+  const displayUsername = currentUsername.trim() || "Admin User";
+  const userInitial = displayUsername.charAt(0).toUpperCase();
+
+  useEffect(() => {
+    if (shouldHide) return;
+    const mac = String(selectedDevice?.mac || "").trim();
+    const ip = String(selectedDevice?.ip || "").trim();
+
+    if (mac) {
+      sessionStorage.setItem(SELECTED_DEVICE_MAC_KEY, mac);
+      localStorage.setItem(SELECTED_DEVICE_MAC_KEY, mac);
+    }
+
+    window.dispatchEvent(
+      new CustomEvent("iot-device-selected", {
+        detail: { mac, ip },
+      }),
+    );
+  }, [selectedDevice?.mac, selectedDevice?.ip, shouldHide]);
 
   if (shouldHide) return null;
 
   return (
-    <motion.header
-      initial={{ opacity: 0, y: -10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ type: "spring", stiffness: 160, damping: 18 }}
-      className="relative flex h-20 items-center justify-between border-b border-slate-200 bg-white px-4 tracking-[-0.02em] leading-relaxed"
+    <header
+      className="relative flex h-20 items-center justify-between border-b border-slate-200 bg-[#f7f8fb] px-6 tracking-[-0.02em] leading-relaxed"
     >
-      <div className="w-[120px]" />
-
-      <h1 className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-3xl font-extrabold tracking-wide text-slate-800">
-        Iot Monitoring
-      </h1>
-
-      <div className="absolute right-[238px] top-1/2 z-20 -translate-y-1/2">
-        {selectedDevice && (
-          <div className="flex flex-col items-start">
-            <motion.button
-              type="button"
-              onClick={() => setExpanded((prev) => !prev)}
-              onContextMenu={(event) => {
-                event.preventDefault();
-                setContextMenu({ x: event.clientX, y: event.clientY, deviceId: selectedDevice.id });
-              }}
-              className="flex h-8 w-fit max-w-[130px] items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50"
-              title="기기 목록 열기"
-              whileHover={{ scale: 1.02 }}
-              whileFocus={{ scale: 1.02 }}
-              transition={{ type: "spring", stiffness: 260, damping: 20 }}
-            >
-              <span
-                className={`h-2.5 w-2.5 rounded-full ${
-                  selectedDevice.online ? "bg-emerald-500 shadow-[0_0_0_2px_rgba(16,185,129,0.2)]" : "bg-slate-300"
-                }`}
-              />
-              <span className="truncate">{selectedDevice.name}</span>
-            </motion.button>
-            <p className="mt-1 text-[11px] font-normal text-slate-500 tracking-[-0.02em] leading-relaxed">
-              {nowText}
-            </p>
-          </div>
-        )}
-
-        {expanded && (
-          <div className="absolute right-0 top-12 z-40 w-[320px] rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
-            <div className="max-h-64 space-y-2 overflow-y-auto">
-              {devices.map((device) => (
-                <motion.button
-                  key={device.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedDeviceId(device.id);
-                    setExpanded(false);
-                  }}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    setContextMenu({ x: event.clientX, y: event.clientY, deviceId: device.id });
-                  }}
-                  className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs font-semibold ${
-                    selectedDeviceId === device.id
-                      ? "border-slate-400 bg-slate-100 text-slate-800"
-                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                  }`}
-                  whileHover={{ scale: 1.02 }}
-                  transition={{ type: "spring", stiffness: 240, damping: 20 }}
-                >
-                  <span
-                    className={`h-2.5 w-2.5 shrink-0 rounded-full ${
-                      device.online ? "bg-emerald-500 shadow-[0_0_0_2px_rgba(16,185,129,0.2)]" : "bg-slate-300"
-                    }`}
-                  />
-                  <span className="truncate">{device.name}</span>
-                </motion.button>
-              ))}
-            </div>
-          </div>
-        )}
+      <div className="flex items-center gap-8">
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-200 text-[12px] font-semibold text-slate-600">
+            {userInitial}
+          </span>
+          <p className="text-[14px] font-medium text-slate-500">{displayUsername}</p>
+        </div>
+        <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-slate-800">
+          IoT Monitoring
+        </h1>
       </div>
 
-      {contextMenu && (
-        <div
-          className="fixed z-50 rounded-lg border border-slate-200 bg-white p-1 shadow-lg"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <button
-            type="button"
-            className="rounded-md px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-            onClick={() => {
-              setInfoDeviceId(contextMenu.deviceId);
-              setShowInfoPanel(true);
-              setContextMenu(null);
-              setExpanded(true);
-            }}
-          >
-            연결정보
-          </button>
-        </div>
-      )}
-
-      {showInfoPanel && infoDevice && (
-        <div className="absolute right-4 top-20 z-50 w-[320px] rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-bold text-slate-800">연결정보</p>
+      <div className="z-20">
+        <div className="flex items-start gap-2">
+          <div className="relative">
             <button
               type="button"
-              className="h-6 w-6 rounded border border-slate-300 text-xs font-bold text-slate-600 hover:bg-slate-100"
-              onClick={() => setShowInfoPanel(false)}
-              aria-label="닫기"
+              onClick={(event) => {
+                event.stopPropagation();
+                setAlarmExpanded((prev) => !prev);
+                setDeviceExpanded(false);
+              }}
+              className="relative top-[6px] flex h-10 w-10 items-center justify-center rounded-[10px] border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-800"
+              title="최근 울림 알람"
             >
-              X
+              <Bell className="h-[18px] w-[18px]" />
+              {unreadAlerts > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+                  {unreadAlerts > 99 ? "99+" : unreadAlerts}
+                </span>
+              )}
             </button>
+
+            {alarmExpanded && (
+              <div className="absolute right-0 top-12 z-40 w-[280px] overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-lg">
+                <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
+                  <div className="inline-flex items-center gap-1.5">
+                    <p className="text-[15px] font-semibold text-slate-700">최근 알람</p>
+                    {unreadAlerts > 0 && (
+                      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-100 px-1 text-[11px] font-bold text-red-600">
+                        {unreadAlerts > 99 ? "99+" : unreadAlerts}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRecentAlerts((alerts) => alerts.map((alert) => ({ ...alert, read: true })))}
+                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                  >
+                    모두 읽음
+                  </button>
+                </div>
+                <div className="max-h-72 overflow-y-auto divide-y divide-slate-200">
+                  {recentAlerts.length === 0 && (
+                    <div className="px-3 py-6 text-center text-xs text-slate-400">
+                      최근 알람이 없습니다.
+                    </div>
+                  )}
+                  {recentAlerts.map((alert) => (
+                    <button
+                      key={alert.id}
+                      type="button"
+                      onClick={() => {
+                        setRecentAlerts((alerts) =>
+                          alerts.map((item) => (item.id === alert.id ? { ...item, read: true } : item)),
+                        );
+                      }}
+                      className="w-full bg-white px-3 py-3 text-left hover:bg-slate-100"
+                    >
+                      <div className="flex items-center gap-2">
+                        {alert.severity === "CRITICAL" ? (
+                          <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500" />
+                        ) : alert.severity === "WARNING" ? (
+                          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+                        ) : (
+                          <Info className="h-4 w-4 shrink-0 text-blue-500" />
+                        )}
+                        <p className="min-w-0 flex-1 truncate text-[15px] font-semibold text-slate-700">{alertText(alert)}</p>
+                        <span className="inline-flex items-center gap-2 pl-2">
+                          {!alert.read && <span className="h-2 w-2 shrink-0 rounded-full bg-blue-500" />}
+                        </span>
+                      </div>
+                      <p className="pl-6 pt-1 text-xs font-medium text-slate-400">
+                        {formatAgoText(alert.createdAt)}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-          <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2 text-[11px] text-slate-600">
-            <p className="font-semibold text-slate-700">{infoDevice.name}</p>
-            <p className="mt-1">MAC: {infoDevice.mac}</p>
-            <p>IP: {infoDevice.ip}</p>
+
+          <div className="relative">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setDeviceExpanded((prev) => !prev);
+                setAlarmExpanded(false);
+              }}
+              className="w-[180px] rounded-[10px] border border-slate-300 bg-white px-2.5 py-1 text-left text-slate-700 hover:bg-slate-50"
+              title="연결 디바이스 목록"
+            >
+              <div className="flex min-w-0 items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span
+                    className={`mt-1 h-2.5 w-2.5 shrink-0 self-center rounded-full ${
+                      selectedDevice?.online
+                        ? "bg-emerald-500 shadow-[0_0_0_2px_rgba(16,185,129,0.2)]"
+                        : "bg-slate-400"
+                    }`}
+                  />
+                  <div className="min-w-0">
+                    <p className="truncate text-[12px] font-semibold text-slate-900">
+                      {selectedDevice?.mac?.trim() ? selectedDevice.mac : "연결된 디바이스 없음"}
+                    </p>
+                    <p className="truncate text-[12px] font-medium text-slate-500">
+                      {selectedDevice?.ip?.trim() ? selectedDevice.ip : "-"}
+                    </p>
+                  </div>
+                </div>
+                <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+              </div>
+            </button>
+
+            {deviceExpanded && (
+              <div className="absolute right-0 top-12 z-40 w-[260px] overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-lg">
+                <div className="border-b border-slate-200 px-3 py-2">
+                  <p className="text-[13px] font-semibold text-slate-700">연결 디바이스</p>
+                </div>
+                <div className="max-h-72 overflow-y-auto divide-y divide-slate-200">
+                  {sessionDevices.length === 0 && (
+                    <div className="px-3 py-6 text-center text-xs text-slate-400">
+                      연결된 디바이스 정보가 없습니다.
+                    </div>
+                  )}
+                  {sessionDevices.map((device, idx) => (
+                    <button
+                      key={`${device.mac}-${idx}`}
+                      type="button"
+                      onClick={() => {
+                        setSelectedDeviceIdx(idx);
+                        setDeviceExpanded(false);
+                      }}
+                      className={`w-full px-3 py-3 text-left ${
+                        selectedDeviceIdx === idx ? "bg-slate-100" : "bg-white hover:bg-slate-100"
+                      }`}
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span
+                          className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                            device.online
+                              ? "bg-emerald-500 shadow-[0_0_0_2px_rgba(16,185,129,0.2)]"
+                              : "bg-slate-400"
+                          }`}
+                        />
+                        <p className="truncate text-[13px] font-semibold text-slate-800">{device.mac || "-"}</p>
+                      </div>
+                      <p className="mt-0.5 truncate pl-4 text-[12px] font-medium text-slate-500">{device.ip || "-"}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
-      )}
-    </motion.header>
+      </div>
+    </header>
   );
 }
 

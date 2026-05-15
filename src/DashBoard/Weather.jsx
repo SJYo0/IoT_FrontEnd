@@ -358,7 +358,7 @@ function Weather() {
   }, []);
 
   useEffect(() => {
-    const brokerHost = "comedy-winter-drew-within.trycloudflare.com";
+    const brokerHost = "constraints-messages-annie-kinda.trycloudflare.com";
     const brokerPort = 443;
     const clientId = "react_client_" + Math.random().toString(16).substr(2, 8);
     const targetTopic = "gateway/+/telemetry";
@@ -831,7 +831,9 @@ function Weather() {
           {/* 가장 아랫단 빈 박스는 그대로 유지 */}
           <motion.section variants={riseIn} className="col-start-2 col-end-4 mt-2 flex w-full">
             <motion.div
-              className={`flex w-full min-w-0 rounded-[24px] border border-slate-200/70 bg-white/95 p-4 ${cardShadow}`}
+              whileHover={{ scale: 1.01, y: -2 }}
+              transition={{ type: "spring", stiffness: 180, damping: 20 }}
+              className={`flex w-full min-w-0 rounded-[24px] border border-slate-200/70 bg-white/95 p-4 ${cardShadow} ${cardHover}`}
             >
               <div className="w-full h-[240px] rounded-[18px] border border-slate-200 bg-slate-50 p-3 overflow-hidden">
                   <div className="grid h-full grid-cols-1 gap-3 xl:grid-cols-3">

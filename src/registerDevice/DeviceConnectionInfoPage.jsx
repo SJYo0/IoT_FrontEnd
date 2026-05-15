@@ -81,7 +81,7 @@ function DeviceConnectionInfoPage() {
   }, []);
 
   useEffect(() => {
-    const brokerHost = "vegetables-polyester-chair-mission.trycloudflare.com";
+    const brokerHost = "affordable-arrangement-camcorders-rice.trycloudflare.com";
     const brokerPort = 443;
     const clientId = "react_conn_" + Math.random().toString(16).slice(2, 10);
     const topic = "gateway/+/telemetry";
