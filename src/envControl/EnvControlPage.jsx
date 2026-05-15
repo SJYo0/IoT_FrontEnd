@@ -88,7 +88,7 @@ function EnvControlPage() {
         return;
       }
       try {
-        const loaded = await fetchDeviceControlState("environment", selectedMac);
+        const loaded = await fetchDeviceControlState("status", selectedMac);
         if (active) {
           setState(loaded);
           setSavedState(loaded);
@@ -141,7 +141,7 @@ function EnvControlPage() {
     setIsSaving(true);
     setSaveMessage("");
     try {
-      const saved = await saveDeviceControlState("environment", selectedMac, state);
+      const saved = await saveDeviceControlState("status", selectedMac, state);
       setState(saved);
       setSavedState(saved);
       setSaveMessage("저장이 완료됐습니다.");
