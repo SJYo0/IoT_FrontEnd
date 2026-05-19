@@ -86,8 +86,6 @@ public class DeviceMqttService {
 
                     SensorDataDTO dto = objectMapper.readValue(payload, SensorDataDTO.class);
 
-                    log.info("[센서 수신] MAC: {}, 온도: {}C, TVOC: {}", macAddress, dto.getTemperature(), dto.getTvoc());
-
                     // DB 퀴리 동작을 피하기 위한 프록시 활용
                     Device deviceProxy = deviceRepository.getReferenceById(deviceId);
 
