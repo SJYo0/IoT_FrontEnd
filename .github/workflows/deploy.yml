@@ -16,7 +16,7 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           script: |
             cd ~/iot-platform/nginx
-            git pull origin main
+            git pull
             
             cd ~/iot-platform
             
