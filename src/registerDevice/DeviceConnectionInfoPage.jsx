@@ -38,8 +38,8 @@ function DeviceConnectionInfoPage() {
     const fetchKnownDevices = async () => {
       try {
         const [onlineRes, pendingRes] = await Promise.all([
-          apiFetch("/devices/online"),
-          apiFetch("/devices/pending"),
+          apiFetch("/api/devices/online"),
+          apiFetch("/api/devices/pending"),
         ]);
 
         if (!onlineRes.ok || !pendingRes.ok) {
@@ -81,8 +81,8 @@ function DeviceConnectionInfoPage() {
   }, []);
 
   useEffect(() => {
-    const brokerHost = "affordable-arrangement-camcorders-rice.trycloudflare.com";
-    const brokerPort = 443;
+    const brokerHost = "localhost";
+    const brokerPort = 9001;
     const clientId = "react_conn_" + Math.random().toString(16).slice(2, 10);
     const topic = "gateway/+/telemetry";
     const client = new Paho.Client(brokerHost, brokerPort, clientId);
