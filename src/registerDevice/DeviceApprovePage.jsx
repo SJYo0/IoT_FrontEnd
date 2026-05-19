@@ -30,7 +30,7 @@ const DeviceApprovePage = () => {
       }
 
       // 2. 이제 이마에 토큰을 붙였으니 당당하게 기기 목록을 불러옵니다.
-      const res = await axios.get(`${API_BASE_URL}/devices/pending`, {
+      const res = await axios.get(`${API_BASE_URL}/api/devices/pending`, {
         withCredentials: true
       });
       if (Array.isArray(res.data)) {
@@ -56,7 +56,7 @@ const DeviceApprovePage = () => {
     try {
       // 2. 백엔드로 거절(POST) 요청 보내기
       // 💡 이미 앞서 토큰을 전역 헤더에 달아두었으므로 시큐리티 프리패스입니다!
-      await axios.post(`${API_BASE_URL}/devices/reject`, 
+      await axios.post(`${API_BASE_URL}/api/devices/reject`, 
         {
           macId: device.macId
         },
@@ -85,7 +85,7 @@ const DeviceApprovePage = () => {
 const handleSubmit = async () => {
     if (!formData.name || !formData.location) return alert("필수 항목을 입력해주세요.");
     
-    await axios.post(`${API_BASE_URL}/devices/approve`, 
+    await axios.post(`${API_BASE_URL}/api/devices/approve`, 
       {
         macId: selectedDevice.macId,
         ...formData
