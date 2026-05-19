@@ -29,7 +29,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AnalysisService {
 
-    private final WebClient webClient = WebClient.builder().baseUrl("http://llm-server:8000").build();
+    private final WebClient webClient = WebClient.builder().baseUrl("http://iot-llm:8000").build();
     private final ObjectMapper objectMapper;
 
     private final DeviceRepository deviceRepository;

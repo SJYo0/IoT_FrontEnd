@@ -41,7 +41,6 @@ public class DeviceMqttService {
     // 구독 채널에 들어온 메시지를 처리
     @ServiceActivator(inputChannel = "mqttInboundChannel")
     public void handleMessage(String payload, @Header(MqttHeaders.RECEIVED_TOPIC) String topic) {
-        log.info("MQTT 수신 - 토픽: {}, 내용: {}", topic, payload);
 
         try {
             if (topic.equals("provisioning/request")) {
