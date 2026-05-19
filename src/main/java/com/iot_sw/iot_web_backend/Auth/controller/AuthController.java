@@ -40,8 +40,16 @@ public class AuthController {
     }
 
     @GetMapping("/me")
-    public Map<String, String> me(Authentication authentication) {
-        return Map.of("username", authentication.getName());
+    public Map<String, Object> me(Authentication authentication, HttpServletRequest request) {
+        HttpSession session = request.getSession(true);
+        AuthService.DeviceSessionContext context = authService.refreshDeviceContextInSession(session, authentication.getName());
+        var devices = authService.getUserApprovedDevices(authentication.getName());
+        return Map.of(
+                "username", authentication.getName(),
+                "deviceMac", context.mac(),
+                "deviceIp", context.ip(),
+                "devices", devices
+        );
     }
 
     @GetMapping("/csrf")
