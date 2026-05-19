@@ -641,7 +641,7 @@ function Weather() {
             transition={{ type: "spring", stiffness: 180, damping: 18 }}
             className={`row-span-2 flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] border border-[#aaaaaa] bg-[#b8b8b8] p-5 text-slate-800 ${cardShadow}`}
           >
-          <p className="mt-2 text-center text-[20px] font-black tracking-[-0.02em]">실내점수</p>
+          <p className="mt-2 text-center text-[20px] font-black tracking-[-0.02em]">실내환경점수</p>
 
           <div className="mx-auto mt-4 flex h-[188px] w-[188px] shrink-0 items-center justify-center rounded-full border-[12px] border-white shadow-inner">
             <div className="text-center px-2">
