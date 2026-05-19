@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/devices")
+@RequestMapping("/api/devices")
 @CrossOrigin(origins = "*") // 리액트(5173 포트) 접속 허용
 @RequiredArgsConstructor
 public class DeviceController {
