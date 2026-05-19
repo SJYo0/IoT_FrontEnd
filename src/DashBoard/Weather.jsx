@@ -358,8 +358,8 @@ function Weather() {
   }, []);
 
   useEffect(() => {
-    const brokerHost = "poor-pregnant-aaa-divorce.trycloudflare.com";
-    const brokerPort = 443;
+    const brokerHost = "localhost";
+    const brokerPort = 9001;
     const clientId = "react_client_" + Math.random().toString(16).substr(2, 8);
     const targetTopic = "gateway/+/telemetry";
     const targetTopic2 = "webbackend/alarm/+";
