@@ -1,4 +1,4 @@
-import { AlertTriangle, CloudSun, Frown, MapPin, Meh, Smile, Maximize2 } from "lucide-react";
+import { AlertTriangle, CloudSun, Frown, MapPin, Meh, Smile, Maximize2, Thermometer, Droplets, Lightbulb } from "lucide-react";
 import { useEffect, useMemo, useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
@@ -8,6 +8,7 @@ import { apiFetch } from "../Auth/api";
 import Paho from "paho-mqtt";
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+const normalizeMac = (value) => String(value || "").trim().toUpperCase();
 
 function apiNumber(value) {
   if (value == null || value === "") return null;
@@ -215,12 +216,79 @@ function CompassRose({ angle, sizeClass = "h-28 w-28" }) {
   );
 }
 
+function normalizeAnalysisStatus(statusValue) {
+  if (!statusValue) return "";
+  if (typeof statusValue === "string") return statusValue;
+  if (typeof statusValue === "object") {
+    const severity = statusValue?.severity ? String(statusValue.severity) : "";
+    const score = statusValue?.score;
+    if (severity && score != null) return `${severity} (${score})`;
+    if (severity) return severity;
+  }
+  return String(statusValue);
+}
+
+function normalizeAnalysisSummary(summaryValue) {
+  if (!summaryValue) return "";
+  if (typeof summaryValue === "string") return summaryValue;
+  if (typeof summaryValue === "object") {
+    const lines = []
+      .concat(Array.isArray(summaryValue.comment) ? summaryValue.comment : [])
+      .concat(Array.isArray(summaryValue.control_sum) ? summaryValue.control_sum : [])
+      .concat(Array.isArray(summaryValue.todo) ? summaryValue.todo : []);
+    if (lines.length > 0) {
+      return lines.join("\n");
+    }
+  }
+  return String(summaryValue);
+}
+
+function toThreeLines(source, fallbackLine) {
+  const cleaned = source
+    .map((line) => String(line || "").replace(/^[-*•]\s*/, "").trim())
+    .filter(Boolean)
+    .slice(0, 3);
+  while (cleaned.length < 3) {
+    cleaned.push(fallbackLine);
+  }
+  return cleaned;
+}
+
+function parseAnalysisSections(summaryValue) {
+  if (summaryValue && typeof summaryValue === "object") {
+    const comments = Array.isArray(summaryValue.comment) ? summaryValue.comment : [];
+    const controls = Array.isArray(summaryValue.control_sum) ? summaryValue.control_sum : [];
+    const todos = Array.isArray(summaryValue.todo) ? summaryValue.todo : [];
+
+    return {
+      overviewLines: toThreeLines(comments, "종합 분석 결과 대기 중"),
+      controlLines: toThreeLines(controls, "AI 제어 결과 대기 중"),
+      guideLines: toThreeLines(todos, "권장 행동 지침 대기 중"),
+    };
+  }
+
+  const lines = normalizeAnalysisSummary(summaryValue)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return {
+    overviewLines: toThreeLines(lines.slice(0, 3), "종합 분석 결과 대기 중"),
+    controlLines: toThreeLines(lines.slice(3, 6), "AI 제어 결과 대기 중"),
+    guideLines: toThreeLines(lines.slice(6, 9), "권장 행동 지침 대기 중"),
+  };
+}
+
 function Weather() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
 
-  const [mqttData, setMqttData] = useState(null);
+  const [latestTelemetry, setLatestTelemetry] = useState(null);
+  const [telemetryByMac, setTelemetryByMac] = useState({});
   const [alarmByCategory, setAlarmByCategory] = useState({});
+  const [analysisByMac, setAnalysisByMac] = useState({});
+  const [activeMac, setActiveMac] = useState("");
+  const activeMacRef = useRef("");
 
   // 💡 [추가] CCTV 소스 주소를 관리할 state (초기값은 빈 문자열)
   const [cctvSrc, setCctvSrc] = useState("");
@@ -268,11 +336,34 @@ function Weather() {
   }, [data]);
 
   useEffect(() => {
-    const brokerHost = "mit-favor-proc-containers.trycloudflare.com"; 
-    const brokerPort = 443;
+    activeMacRef.current = activeMac;
+  }, [activeMac]);
+
+  useEffect(() => {
+    const savedMac =
+      sessionStorage.getItem("iot.selectedDeviceMac") ||
+      localStorage.getItem("iot.selectedDeviceMac") ||
+      "";
+    if (savedMac) {
+      setActiveMac(normalizeMac(savedMac));
+    }
+
+    const onDeviceSelected = (event) => {
+      const selectedMac = normalizeMac(event?.detail?.mac || "");
+      setActiveMac(selectedMac);
+    };
+
+    window.addEventListener("iot-device-selected", onDeviceSelected);
+    return () => window.removeEventListener("iot-device-selected", onDeviceSelected);
+  }, []);
+
+  useEffect(() => {
+    const brokerHost = "localhost";
+    const brokerPort = 9001;
     const clientId = "react_client_" + Math.random().toString(16).substr(2, 8);
     const targetTopic = "gateway/+/telemetry";
     const targetTopic2 = "webbackend/alarm/+";
+    const targetTopic3 = "webbackend/analysis/+";
 
     const client = new Paho.Client(brokerHost, brokerPort, clientId);
 
@@ -281,9 +372,29 @@ function Weather() {
         const topic = message.destinationName;
         const payload = JSON.parse(message.payloadString);
         if(topic.includes("telemetry")) {
-          setMqttData(payload); 
+          const topicParts = String(topic).split("/");
+          const macFromTopic = topicParts.length === 3 ? normalizeMac(topicParts[1]) : "";
+          const telemetry = {
+            ...payload,
+            _macFromTopic: macFromTopic,
+          };
+          setLatestTelemetry(telemetry);
+          if (macFromTopic) {
+            setTelemetryByMac((prev) => ({
+              ...prev,
+              [macFromTopic]: telemetry,
+            }));
+          }
+          if (macFromTopic && !activeMacRef.current) {
+            setActiveMac(macFromTopic);
+          }
         }
         else if(topic.includes("alarm")) {
+          const topicParts = String(topic).split("/");
+          const alarmMac = topicParts.length === 3 ? normalizeMac(topicParts[2]) : "";
+          if (activeMacRef.current && alarmMac && alarmMac !== activeMacRef.current) {
+            return;
+          }
           if (payload?.category) {
             setAlarmByCategory((prev) => ({
               ...prev,
@@ -294,6 +405,33 @@ function Weather() {
               },
             }));
           }
+        }
+        else if(topic.includes("analysis")) {
+          const topicParts = String(topic).split("/");
+          const analysisMac = topicParts.length === 3 ? normalizeMac(topicParts[2]) : "";
+          if (!analysisMac) {
+            return;
+          }
+          const analysis = {
+            status: normalizeAnalysisStatus(payload?.status),
+            summary: normalizeAnalysisSummary(payload?.summary),
+            timestamp: Date.now(),
+          };
+          setAnalysisByMac((prev) => ({
+            ...prev,
+            [analysisMac]: analysis,
+          }));
+          if (activeMacRef.current && analysisMac !== activeMacRef.current) {
+            return;
+          }
+          window.dispatchEvent(
+            new CustomEvent("iot-analysis-updated", {
+              detail: {
+                mac: analysisMac,
+                ...analysis,
+              },
+            }),
+          );
         }
       } catch (e) {
         console.error("MQTT 파싱 에러:", e);
@@ -306,6 +444,7 @@ function Weather() {
       onSuccess: () => {
         client.subscribe(targetTopic);
         client.subscribe(targetTopic2);
+        client.subscribe(targetTopic3);
       },
       onFailure: (err) => console.error("MQTT 연결 실패:", err.errorMessage)
     });
@@ -328,9 +467,11 @@ function Weather() {
       .catch(() => setError("대시보드 정보를 불러오지 못했습니다."));
 
       // 💡 2. [추가된 부분] 현재 진행 중인 비상 알람 상태 동기화
-    // 실제 연결된 기기의 MAC 주소를 넣어야 합니다 (예시로 RPI_MAC 사용)
-    const RPI_MAC = "2C:CF:67:B8:09:AE"; 
-    apiFetch(`/api/alerts/active/${RPI_MAC}`)
+    if (!activeMac) {
+      setAlarmByCategory({});
+      return;
+    }
+    apiFetch(`/api/alerts/active/${activeMac}`)
       .then((res) => {
         if (res.ok) return res.json();
         return [];
@@ -350,7 +491,25 @@ function Weather() {
         setAlarmByCategory(initialAlarms);
       })
       .catch((err) => console.error("활성 알람 로깅 실패:", err));
-  }, [navigate]);
+  }, [navigate, activeMac]);
+
+  useEffect(() => {
+    const alerts = Object.entries(alarmByCategory);
+    if (alerts.length === 0) return;
+    alerts.forEach(([category, alert]) => {
+      if (!alert || (alert.severity !== "WARNING" && alert.severity !== "CRITICAL")) return;
+      window.dispatchEvent(
+        new CustomEvent("iot-alert-raised", {
+          detail: {
+            category,
+            severity: alert.severity,
+            message: alert.message || "",
+            timestamp: alert.timestamp || Date.now(),
+          },
+        }),
+      );
+    });
+  }, [alarmByCategory]);
 
   if (error) {
     return (
@@ -392,17 +551,23 @@ function Weather() {
   const dashboardScore = hasScoreInput ? clamp( Math.round( (ta != null ? clamp(((ta + 10) / 50) * 30, 0, 30) : 0) + (hm != null ? clamp((hm / 100) * 25, 0, 25) : 0) + (rn != null ? clamp((1 - Math.min(Math.abs(rn), 20) / 20) * 15, 0, 15) : 0) + (ws != null ? clamp((1 - ws / 15) * 15, 0, 15) : 0) + 15, ), 1, 100, ) : null;
   const mainLabel = scoreLabelFromValue(dashboardScore);
 
-  const indoorTemp = mqttData?.temperature ?? null;
-  const indoorHum = mqttData?.humidity ?? null;
-  const indoorPressure = mqttData?.pressure ?? null;
-  const indoorTvoc = mqttData?.tvoc ?? null;
-  const indoorEco2 = mqttData?.eco2 ?? null;
-  const indoorFlame = mqttData?.flameValue ?? null;
+  const indoorTelemetry = activeMac ? telemetryByMac[activeMac] ?? null : latestTelemetry;
+  const indoorTemp = indoorTelemetry?.temperature ?? null;
+  const indoorHum = indoorTelemetry?.humidity ?? null;
+  const indoorPressure = indoorTelemetry?.pressure ?? null;
+  const indoorTvoc = indoorTelemetry?.tvoc ?? null;
+  const indoorEco2 = indoorTelemetry?.eco2 ?? null;
+  const indoorFlame = indoorTelemetry?.flameValue ?? null;
   const tempAlarm = alarmByCategory?.TEMP;
   const humidityAlarm = alarmByCategory?.HUMIDITY;
   const fireAlarm = alarmByCategory?.FIRE;
   const tvocAlarm = alarmByCategory?.TVOC;
   const eco2Alarm = alarmByCategory?.ECO2;
+  const activeAnalysis = activeMac ? analysisByMac[activeMac] ?? null : null;
+  const analysisView = parseAnalysisSections(activeAnalysis?.summary ?? "");
+  const overviewLines = activeAnalysis ? analysisView.overviewLines : ["분석 결과 수신 전입니다."];
+  const controlLines = activeAnalysis ? analysisView.controlLines : ["AI 제어 분석 대기 중입니다."];
+  const guideLines = activeAnalysis ? analysisView.guideLines : ["권장 행동 지침 대기 중입니다."];
 
   const metrics = [
     {
@@ -496,7 +661,7 @@ function Weather() {
             transition={{ type: "spring", stiffness: 180, damping: 18 }}
             className={`row-span-2 flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] border border-[#aaaaaa] bg-[#b8b8b8] p-5 text-slate-800 ${cardShadow}`}
           >
-          <p className="mt-2 text-center text-[20px] font-black tracking-[-0.02em]">센서</p>
+          <p className="mt-2 text-center text-[20px] font-black tracking-[-0.02em]">실내환경점수</p>
 
           <div className="mx-auto mt-4 flex h-[188px] w-[188px] shrink-0 items-center justify-center rounded-full border-[12px] border-white shadow-inner">
             <div className="text-center px-2">
@@ -547,7 +712,7 @@ function Weather() {
 
           {/* Right */}
           <motion.section variants={riseIn} className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
-            <div className={`rounded-[24px] border border-slate-200/70 bg-white/95 p-5 ${cardShadow}`}>
+            <div className={`rounded-[24px] border border-slate-200/70 bg-white/95 p-3.5 ${cardShadow}`}>
             <div className="flex items-start justify-between">
               <p className="text-[14px] font-black text-slate-800 tracking-[-0.02em]">실외 날씨정보</p>
               <div className="text-right">
@@ -557,15 +722,15 @@ function Weather() {
                 </p>
               </div>
             </div>
-            <div className="mt-3 flex items-center gap-3">
-              <div className="grid min-h-[182px] w-full grid-cols-2 grid-rows-[auto_auto] rounded-xl border border-slate-200 bg-slate-100/40">
-                <div className="flex items-start justify-start gap-3 px-3 py-3">
-                  <div className="mt-6 flex items-center justify-center rounded-lg bg-slate-100/80 p-2">
-                    <CloudSun className="h-16 w-16 shrink-0 text-slate-500" strokeWidth={1.5} />
+            <div className="mt-2 flex items-center gap-3">
+              <div className="grid min-h-[132px] w-full grid-cols-2 grid-rows-[auto_auto] rounded-xl border border-slate-200 bg-slate-100/40">
+                <div className="flex items-start justify-start gap-3 px-3 py-2">
+                  <div className="mt-3 flex items-center justify-center rounded-lg bg-slate-100/80 p-1.5">
+                    <CloudSun className="h-12 w-12 shrink-0 text-slate-500" strokeWidth={1.5} />
                   </div>
-                  <div className="min-w-0 flex-1 rounded-lg bg-white/80 px-3 py-2 text-slate-700">
-                    <p className="text-2xl font-extrabold leading-none">{ta == null ? "-" : `${ta}°C`}</p>
-                    <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[12px]">
+                  <div className="min-w-0 flex-1 rounded-lg bg-white/80 px-2.5 py-1.5 text-slate-700">
+                    <p className="text-lg font-extrabold leading-none">{ta == null ? "-" : `${ta}°C`}</p>
+                    <div className="mt-1 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[11px]">
                       <p className="font-semibold text-slate-500">날씨</p>
                       <p className="truncate font-semibold">{weatherText}</p>
                       <p className="font-semibold text-slate-500">습도</p>
@@ -576,14 +741,22 @@ function Weather() {
                   </div>
                 </div>
 
-                <div className="flex flex-col items-center justify-center border-l border-slate-200 bg-white/70 px-3 py-2 text-center">
-                  <CompassRose angle={windInfo.angle} sizeClass="h-20 w-20" />
-                  <p className="mt-1 text-xs font-semibold text-slate-500">풍향</p>
-                  <p className="text-base font-extrabold text-slate-800">{windInfo.label}</p>
-                  <p className="text-xs text-slate-500">{wd == null ? "-" : `${wd}° (${windInfo.short})`}</p>
+                <div className="border-l border-slate-200 bg-white/70 px-3 py-2">
+                  <div className="flex h-full min-h-[92px] items-center rounded-lg border border-slate-200 bg-white px-2">
+                    <div className="grid w-full grid-cols-2 items-center divide-x divide-slate-200">
+                      <div className="flex items-center justify-center">
+                        <CompassRose angle={windInfo.angle} sizeClass="h-12 w-12" />
+                      </div>
+                      <div className="flex flex-col items-center justify-center text-center">
+                        <p className="text-[11px] font-semibold text-slate-500">풍향</p>
+                        <p className="text-sm font-extrabold text-slate-800">{windInfo.label}</p>
+                        <p className="text-[11px] text-slate-500">{wd == null ? "-" : `${wd}° (${windInfo.short})`}</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="col-span-2 border-t border-slate-200/80 px-3 py-2 text-center text-[11px]">
+                <div className="col-span-2 border-t border-slate-200/80 px-3 py-1 text-center text-[11px]">
                   <p className={`font-semibold ${data.dryWarning ? "text-rose-600" : "text-emerald-700"}`}>
                     건조주의보 {data.dryWarning ? "발령" : "미발령"}
                   </p>
@@ -599,7 +772,7 @@ function Weather() {
             <motion.div
               whileHover={{ scale: 1.01 }}
               transition={{ type: "spring", stiffness: 220, damping: 20 }}
-              className={`flex flex-col overflow-hidden rounded-[24px] border border-slate-200/70 bg-white/95 p-5 ${cardShadow} ${cardHover}`}
+              className={`flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] border border-slate-200/70 bg-white/95 p-5 ${cardShadow} ${cardHover}`}
             >
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-[14px] font-black text-slate-800 tracking-[-0.02em]">실시간 CCTV</p>
@@ -656,12 +829,51 @@ function Weather() {
           </motion.section>
 
           {/* 가장 아랫단 빈 박스는 그대로 유지 */}
-          <motion.section variants={riseIn} className="col-start-2 col-end-4 flex h-full min-h-0 w-full">
+          <motion.section variants={riseIn} className="col-start-2 col-end-4 mt-2 flex w-full">
             <motion.div
               whileHover={{ scale: 1.01, y: -2 }}
               transition={{ type: "spring", stiffness: 180, damping: 20 }}
-              className={`flex h-full min-h-[152px] w-full min-w-0 items-center justify-center rounded-[24px] border border-slate-200/70 bg-white/95 p-4 ${cardShadow} ${cardHover}`}
+              className={`flex w-full min-w-0 rounded-[24px] border border-slate-200/70 bg-white/95 p-4 ${cardShadow} ${cardHover}`}
             >
+              <div className="w-full h-[240px] rounded-[18px] border border-slate-200 bg-slate-50 p-3 overflow-hidden">
+                  <div className="grid h-full grid-cols-1 gap-3 xl:grid-cols-3">
+                    <div className="flex h-full min-h-0 flex-col rounded-xl border border-slate-200 bg-white p-3 overflow-hidden">
+                      <div className="flex items-center gap-2 text-amber-600">
+                        <Thermometer className="h-4 w-4" />
+                        <p className="text-[15px] font-bold">종합 분석</p>
+                      </div>
+                      <ul className="mt-2 min-h-0 flex-1 list-disc space-y-1 overflow-y-auto pr-1 pl-5 text-[15px] font-medium leading-relaxed text-slate-700">
+                        {overviewLines.map((item, idx) => (
+                          <li key={`overview-${idx}-${item}`}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="flex h-full min-h-0 flex-col rounded-xl border border-slate-200 bg-white p-3 overflow-hidden">
+                      <div className="flex items-center gap-2 text-sky-600">
+                        <Droplets className="h-4 w-4" />
+                        <p className="text-[15px] font-bold">AI 제어</p>
+                      </div>
+                      <ul className="mt-2 min-h-0 flex-1 list-disc space-y-1 overflow-y-auto pr-1 pl-5 text-[15px] font-medium leading-relaxed text-slate-700">
+                        {controlLines.map((item, idx) => (
+                          <li key={`control-${idx}-${item}`}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="flex h-full min-h-0 flex-col rounded-xl border border-indigo-200 bg-indigo-50 p-3 overflow-hidden">
+                      <div className="flex items-center gap-2 text-indigo-700">
+                        <Lightbulb className="h-4 w-4" />
+                        <p className="text-[15px] font-bold">권장 행동 지침</p>
+                      </div>
+                      <ul className="mt-2 min-h-0 flex-1 list-disc space-y-1 overflow-y-auto pr-1 pl-5 text-[15px] font-medium leading-relaxed text-indigo-800">
+                        {guideLines.map((item, idx) => (
+                          <li key={`guide-${idx}-${item}`}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+              </div>
             </motion.div>
           </motion.section>
       </motion.div>
