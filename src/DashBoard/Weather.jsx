@@ -143,7 +143,7 @@ function scoreLabelFromValue(score) {
   if (score >= 80) return "좋음";
   if (score >= 60) return "보통";
   if (score >= 40) return "나쁨";
-  return "매우나쁨";
+  return "매우나빠";
 }
 
 function windDirectionInfo(degree) {
