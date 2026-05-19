@@ -15,7 +15,7 @@ jobs:
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            cd ~/iot-platform/nginx
+            cd ~/iot-platform/frontend
             git pull
             
             cd ~/iot-platform
