@@ -1,6 +1,7 @@
 package com.iot_sw.iot_web_backend.mqtt;
 
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.integration.annotation.IntegrationComponentScan;
@@ -22,7 +23,8 @@ import java.util.UUID;
 @IntegrationComponentScan(basePackages = "com.iot_sw.iot_web_backend")
 public class MqttConfig {
 
-    private static final String BROKER_URL = "tcp://localhost:1883";
+    @Value("${MQTT_BROKER_URL:tcp://localhost:1883}")
+    private String brokerUrl;
     // 브로커에 메세지를 발행하는 주체
     private static final String OUTBOUND_CLIENT_ID = "spring-boot-server-outbound-" + UUID.randomUUID().toString();
     private static final String INBOUND_CLIENT_ID = "spring-boot-server-inbound-" + UUID.randomUUID().toString();
@@ -31,7 +33,7 @@ public class MqttConfig {
     public MqttPahoClientFactory mqttClientFactory() {
         DefaultMqttPahoClientFactory factory = new DefaultMqttPahoClientFactory();
         MqttConnectOptions options = new MqttConnectOptions();
-        options.setServerURIs(new String[] { BROKER_URL });
+        options.setServerURIs(new String[] { brokerUrl });
         options.setCleanSession(true);
         factory.setConnectionOptions(options);
         return factory;
