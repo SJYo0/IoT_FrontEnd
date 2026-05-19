@@ -81,7 +81,7 @@ function DeviceConnectionInfoPage() {
   }, []);
 
   useEffect(() => {
-    const brokerHost = "localhost";
+    const brokerHost = window.location.hostname;
     const brokerPort = 9001;
     const clientId = "react_conn_" + Math.random().toString(16).slice(2, 10);
     const topic = "gateway/+/telemetry";
@@ -103,7 +103,7 @@ function DeviceConnectionInfoPage() {
 
     client.connect({
       timeout: 3,
-      useSSL: true,
+      useSSL: window.location.protocol === "https:",
       onSuccess: () => client.subscribe(topic),
       onFailure: () => {},
     });
