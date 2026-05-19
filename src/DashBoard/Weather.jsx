@@ -3,8 +3,6 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../Auth/api";
-
-// 💡 1. MQTT 라이브러리 임포트
 import Paho from "paho-mqtt";
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
@@ -78,8 +76,6 @@ function SemiGaugeCard({ title, value, unit, min, max, sublabel, alertSeverity, 
   const rOuter = 54;
   const rInner = 38;
   const needleLength = rInner - 8;
-
-  const [nx, ny] = polar(cx, cy, rInner - 8, needleAngle);
 
   return (
     <motion.div
@@ -194,18 +190,10 @@ function CompassRose({ angle, sizeClass = "h-28 w-28" }) {
         );
       })}
 
-      <text x="60" y="16" textAnchor="middle" fill="#e2e8f0" fontSize="10" fontWeight="700">
-        N
-      </text>
-      <text x="104" y="64" textAnchor="middle" fill="#94a3b8" fontSize="9" fontWeight="700">
-        E
-      </text>
-      <text x="60" y="112" textAnchor="middle" fill="#94a3b8" fontSize="9" fontWeight="700">
-        S
-      </text>
-      <text x="16" y="64" textAnchor="middle" fill="#94a3b8" fontSize="9" fontWeight="700">
-        W
-      </text>
+      <text x="60" y="16" textAnchor="middle" fill="#e2e8f0" fontSize="10" fontWeight="700">N</text>
+      <text x="104" y="64" textAnchor="middle" fill="#94a3b8" fontSize="9" fontWeight="700">E</text>
+      <text x="60" y="112" textAnchor="middle" fill="#94a3b8" fontSize="9" fontWeight="700">S</text>
+      <text x="16" y="64" textAnchor="middle" fill="#94a3b8" fontSize="9" fontWeight="700">W</text>
 
       <g style={{ transform: `rotate(${angle}deg)`, transformOrigin: "60px 60px", transition: "transform 0.35s ease" }}>
         <polygon points="60,19 56,60 64,60" fill="#ef4444" />
@@ -290,22 +278,19 @@ function Weather() {
   const [activeMac, setActiveMac] = useState("");
   const activeMacRef = useRef("");
 
-  // 💡 [추가] CCTV 소스 주소를 관리할 state (초기값은 빈 문자열)
   const [cctvSrc, setCctvSrc] = useState("");
 
   const navigate = useNavigate();
-  
-  // 💡 CCTV 전체화면을 위한 ref 생성
   const cctvContainerRef = useRef(null);
 
-  const RPI_IP = "192.168.137.111"; 
+  // 💡 1. CCTV 사설 IP를 클라우드 도메인으로 동기화 (보안 오류 방지)
+  const RPI_IP = window.location.hostname; 
 
   const weather = useMemo(
     () => (Array.isArray(data?.weather) ? data.weather : []),
     [data],
   );
 
-  // 전체화면 토글 함수
   const handleFullscreen = () => {
     const elem = cctvContainerRef.current;
     if (!elem) return;
@@ -313,9 +298,9 @@ function Weather() {
     if (!document.fullscreenElement) {
       if (elem.requestFullscreen) {
         elem.requestFullscreen();
-      } else if (elem.webkitRequestFullscreen) { /* Safari */
+      } else if (elem.webkitRequestFullscreen) {
         elem.webkitRequestFullscreen();
-      } else if (elem.msRequestFullscreen) { /* IE11 */
+      } else if (elem.msRequestFullscreen) {
         elem.msRequestFullscreen();
       }
     } else {
@@ -325,15 +310,15 @@ function Weather() {
     }
   };
 
-  // 💡 [추가] 대시보드 렌더링이 끝난 후 CCTV 연결 시작 (블로킹 방지)
   useEffect(() => {
     if (data) {
       const timer = setTimeout(() => {
-        setCctvSrc(`http://${RPI_IP}:8889/cam`);
-      }, 500); // 0.5초 뒤에 렌더링
+        // http 강제 적용 시 브라우저 차단이 발생하므로 현재 프로토콜을 따라가도록 설정
+        setCctvSrc(`${window.location.protocol}//${RPI_IP}:8889/cam`);
+      }, 500);
       return () => clearTimeout(timer);
     }
-  }, [data]);
+  }, [data, RPI_IP]);
 
   useEffect(() => {
     activeMacRef.current = activeMac;
@@ -358,7 +343,8 @@ function Weather() {
   }, []);
 
   useEffect(() => {
-    const brokerHost = "localhost";
+    // 💡 2. 하드코딩된 localhost 대신 브라우저의 접속 주소(KT 클라우드) 자동 획득
+    const brokerHost = window.location.hostname;
     const brokerPort = 9001;
     const clientId = "react_client_" + Math.random().toString(16).substr(2, 8);
     const targetTopic = "gateway/+/telemetry";
@@ -440,7 +426,8 @@ function Weather() {
 
     client.connect({
       timeout: 3,
-      useSSL: true,
+      // 💡 3. 접속 환경이 https면 웹소켓도 보안 통신(wss)을 쓰도록 자동 분기 처리
+      useSSL: window.location.protocol === "https:",
       onSuccess: () => {
         client.subscribe(targetTopic);
         client.subscribe(targetTopic2);
@@ -466,7 +453,6 @@ function Weather() {
       .then((responseData) => setData(responseData))
       .catch(() => setError("대시보드 정보를 불러오지 못했습니다."));
 
-      // 💡 2. [추가된 부분] 현재 진행 중인 비상 알람 상태 동기화
     if (!activeMac) {
       setAlarmByCategory({});
       return;
@@ -477,7 +463,6 @@ function Weather() {
         return [];
       })
       .then((activeAlerts) => {
-        // DB에서 가져온 활성 알람 리스트를 바탕으로 초기 상태 구성
         const initialAlarms = {};
         activeAlerts.forEach((alert) => {
           initialAlarms[alert.category] = {
@@ -486,8 +471,6 @@ function Weather() {
             timestamp: new Date(alert.createdAt).getTime(),
           };
         });
-        
-        // 가져온 데이터로 알람 State 초기화!
         setAlarmByCategory(initialAlarms);
       })
       .catch((err) => console.error("활성 알람 로깅 실패:", err));
@@ -636,9 +619,6 @@ function Weather() {
     { label: "나쁨", icon: Frown, active: dashboardScore != null && mainLabel === "나쁨" },
     { label: "매우나쁨", icon: AlertTriangle, active: dashboardScore != null && mainLabel === "매우나쁨" },
   ];
-
-  const isAnyCritical = Object.values(alarmByCategory).some(a => a.severity === "CRITICAL");
-  const isAnyWarning = Object.values(alarmByCategory).some(a => a.severity === "WARNING");
 
   return (
     <div
