@@ -1,9 +1,12 @@
 package com.iot_sw.iot_web_backend.setting.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.iot_sw.iot_web_backend.device.entity.Device;
 import com.iot_sw.iot_web_backend.device.entity.ApproveLog;
 import com.iot_sw.iot_web_backend.device.repository.ApproveLogRepository;
 import com.iot_sw.iot_web_backend.device.repository.DeviceRepository;
+import com.iot_sw.iot_web_backend.mqtt.MqttGateway;
 import com.iot_sw.iot_web_backend.setting.dto.DeviceControlStateDto;
 import com.iot_sw.iot_web_backend.setting.entity.ControlStatus;
 import com.iot_sw.iot_web_backend.setting.entity.Environment;
@@ -16,6 +19,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class DeviceControlService {
+
+    private final ObjectMapper objectMapper;
+    private final MqttGateway mqttGateway;
 
     private final DeviceRepository deviceRepository;
     private final ApproveLogRepository approveLogRepository;
@@ -55,7 +61,37 @@ public class DeviceControlService {
                 .orElseGet(() -> ControlStatus.builder().device(device).build());
         applyToControlStatus(status, dto);
         controlStatusRepository.save(status);
+
+        String mqttPayload = createMqttPayload(dto);
+
+        if (!"{}".equals(mqttPayload)) {
+            // DB에 저장된 정확한 대문자 MAC 주소를 사용하여 토픽 생성
+            String controlTopic = "webbackend/control/" + device.getMacId();
+            mqttGateway.sendToMqtt(mqttPayload, controlTopic);
+        }
+
         return toDto(status);
+    }
+
+    private String createMqttPayload(DeviceControlStateDto dto) {
+        ObjectNode node = objectMapper.createObjectNode();
+
+        if (dto.windowNorth() != null) node.put("north_window", dto.windowNorth());
+        if (dto.windowSouth() != null) node.put("south_window", dto.windowSouth());
+        if (dto.windowEast() != null) node.put("east_window", dto.windowEast());
+        if (dto.windowWest() != null) node.put("west_window", dto.windowWest());
+
+        if (dto.aircon() != null) node.put("air_conditioner", dto.aircon());
+        if (dto.heater() != null) node.put("heating", dto.heater());
+
+        if (dto.humidifier() != null) node.put("humidifier", dto.humidifier());
+        if (dto.dehumidifier() != null) node.put("dehumidifier", dto.dehumidifier());
+
+        if (dto.airCleaner() != null) node.put("air_cleaner", dto.airCleaner());
+        if (dto.sprinkler() != null) node.put("sprinkler", dto.sprinkler());
+        if (dto.fireAlarm() != null) node.put("fire_alarm", dto.fireAlarm());
+
+        return node.toString();
     }
 
     private Device findApprovedDeviceForUser(String username, String mac) {
@@ -147,4 +183,6 @@ public class DeviceControlService {
         status.setSprinkler(toBool(dto.sprinkler()));
         status.setFireAlarm(toBool(dto.fireAlarm()));
     }
+
+
 }
