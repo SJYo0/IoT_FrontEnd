@@ -143,7 +143,7 @@ function scoreLabelFromValue(score) {
   if (score >= 80) return "좋음";
   if (score >= 60) return "보통";
   if (score >= 40) return "나쁨";
-  return "매우나빠";
+  return "매우나쁨";
 }
 
 function windDirectionInfo(degree) {
@@ -617,7 +617,7 @@ function Weather() {
     { label: "좋음", icon: Smile, active: dashboardScore != null && mainLabel === "좋음" },
     { label: "보통", icon: Meh, active: dashboardScore != null && mainLabel === "보통" },
     { label: "나쁨", icon: Frown, active: dashboardScore != null && mainLabel === "나쁨" },
-    { label: "매우나쁨", icon: AlertTriangle, active: dashboardScore != null && mainLabel === "매우나쁨" },
+    { label: "매우나쁨", icon: AlertTriangle, active: dashboardScore != null && mainLabel === "매우나빠" },
   ];
 
   return (
