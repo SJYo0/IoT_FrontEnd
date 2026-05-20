@@ -29,8 +29,27 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AnalysisService {
 
-    private final WebClient webClient = WebClient.builder().baseUrl("http://iot-llm:8000").build();
+    private final WebClient webClient;
     private final ObjectMapper objectMapper;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AnalysisService(
+            @org.springframework.beans.factory.annotation.Value("${llm.server.url}") String llmServerUrl,
+            ObjectMapper objectMapper,
+            DeviceRepository deviceRepository,
+            AiAnalysisRepository aiAnalysisRepository,
+            ControlStatusRepository controlStatusRepository,
+            ControlLogRepository controlLogRepository,
+            MqttGateway mqttGateway) {
+
+        this.webClient = WebClient.builder().baseUrl(llmServerUrl).build();
+        this.objectMapper = objectMapper;
+        this.deviceRepository = deviceRepository;
+        this.aiAnalysisRepository = aiAnalysisRepository;
+        this.controlStatusRepository = controlStatusRepository;
+        this.controlLogRepository = controlLogRepository;
+        this.mqttGateway = mqttGateway;
+    }
 
     private final DeviceRepository deviceRepository;
     private final AiAnalysisRepository aiAnalysisRepository;

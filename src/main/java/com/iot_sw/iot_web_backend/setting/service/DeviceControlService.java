@@ -104,20 +104,20 @@ public class DeviceControlService {
             Device selectedDevice = deviceRepository.findByMacId(normalizedMac)
                     .orElseThrow(() -> new IllegalArgumentException("해당 MAC 주소의 장치를 찾을 수 없습니다."));
 
-            boolean approved = approveLogRepository.existsByUser_UsernameAndDevice_IdAndIsApproveTrue(
-                    username,
-                    selectedDevice.getId()
-            );
-            if (!approved) {
-                throw new IllegalArgumentException("해당 장치는 로그인 사용자에게 승인되지 않았습니다.");
-            }
+//            boolean approved = approveLogRepository.existsByUser_UsernameAndDevice_IdAndIsApproveTrue(
+//                    username,
+//                    selectedDevice.getId()
+//            );
+//            if (!approved) {
+//                throw new IllegalArgumentException("해당 장치는 로그인 사용자에게 승인되지 않았습니다.");
+//            }
             return selectedDevice;
         }
-
-        ApproveLog latestApprovedDevice = approveLogRepository
-                .findTopByUser_UsernameAndIsApproveTrueOrderByApprovedAtDesc(username)
-                .orElseThrow(() -> new IllegalArgumentException("로그인 사용자에게 승인된 장치가 없습니다."));
-        return latestApprovedDevice.getDevice();
+        throw new IllegalArgumentException("장치를 찾지 못했습니다.");
+//        ApproveLog latestApprovedDevice = approveLogRepository
+//                .findTopByUser_UsernameAndIsApproveTrueOrderByApprovedAtDesc(username)
+//                .orElseThrow(() -> new IllegalArgumentException("로그인 사용자에게 승인된 장치가 없습니다."));
+//        return latestApprovedDevice.getDevice();
     }
 
     private static boolean toBool(Boolean value) {
