@@ -81,7 +81,7 @@ function DeviceConnectionInfoPage() {
   }, []);
 
   useEffect(() => {
-    const brokerHost = window.location.hostname;
+    const brokerHost = import.meta.env.VITE_MQTT_BROKER;
     const brokerPort = 9001;
     const clientId = "react_conn_" + Math.random().toString(16).slice(2, 10);
     const topic = "gateway/+/telemetry";
