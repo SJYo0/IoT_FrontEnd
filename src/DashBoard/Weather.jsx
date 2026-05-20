@@ -284,7 +284,7 @@ function Weather() {
   const cctvContainerRef = useRef(null);
 
   // 💡 1. CCTV 사설 IP를 클라우드 도메인으로 동기화 (보안 오류 방지)
-  const RPI_IP = window.location.hostname; 
+  const MEDIAMTX_IP = import.meta.env.VITE_MEDIAMTX_IP;
 
   const weather = useMemo(
     () => (Array.isArray(data?.weather) ? data.weather : []),
@@ -314,11 +314,11 @@ function Weather() {
     if (data) {
       const timer = setTimeout(() => {
         // http 강제 적용 시 브라우저 차단이 발생하므로 현재 프로토콜을 따라가도록 설정
-        setCctvSrc(`${window.location.protocol}//${RPI_IP}:8889/cam`);
+        setCctvSrc(`http://${MEDIAMTX_IP}:8889/cam`);
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [data, RPI_IP]);
+  }, [data, MEDIAMTX_IP]);
 
   useEffect(() => {
     activeMacRef.current = activeMac;
@@ -344,7 +344,7 @@ function Weather() {
 
   useEffect(() => {
     // 💡 2. 하드코딩된 localhost 대신 브라우저의 접속 주소(KT 클라우드) 자동 획득
-    const brokerHost = window.location.hostname;
+    const brokerHost = import.meta.env.VITE_MQTT_BROKER;
     const brokerPort = 9001;
     const clientId = "react_client_" + Math.random().toString(16).substr(2, 8);
     const targetTopic = "gateway/+/telemetry";
