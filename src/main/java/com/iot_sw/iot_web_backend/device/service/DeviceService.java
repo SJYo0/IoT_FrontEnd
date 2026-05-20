@@ -15,6 +15,8 @@ import com.iot_sw.iot_web_backend.device.repository.DeviceRepository;
 import com.iot_sw.iot_web_backend.device.entity.Device;
 import com.iot_sw.iot_web_backend.device.enums.DeviceStatus;
 import com.iot_sw.iot_web_backend.mqtt.MqttGateway;
+import com.iot_sw.iot_web_backend.setting.entity.ControlStatus;
+import com.iot_sw.iot_web_backend.setting.repository.ControlStatusRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -30,6 +32,7 @@ public class DeviceService {
     private final DeviceRepository deviceRepository;
     private final ApproveLogRepository approveLogRepository;
     private final DeviceLogRepository deviceLogRepository;
+    private final ControlStatusRepository controlStatusRepository;
     private final MqttGateway mqttGateway;
     private final DeviceIdCache deviceIdCache;
 
@@ -59,6 +62,22 @@ public class DeviceService {
 
             if (existingDevice.getStatus() == DeviceStatus.ONLINE || existingDevice.getStatus() == DeviceStatus.OFFLINE) {
                 log.info("이미 승인된 기기의 재접속 요청입니다. 허가증을 재발급합니다: {}", requestDTO.getMacId());
+
+                // 제어상태를 0으로 초기화
+                ControlStatus currentStatus = controlStatusRepository.findByDeviceId(existingDevice.getId())
+                        .orElseThrow(() -> new RuntimeException("제어 상태 테이블이 없습니다."));
+
+                currentStatus.setNorthWindow(false);
+                currentStatus.setSouthWindow(false);
+                currentStatus.setEastWindow(false);
+                currentStatus.setWestWindow(false);
+                currentStatus.setAirConditioner(false);
+                currentStatus.setHeating(false);
+                currentStatus.setHumidifier(false);
+                currentStatus.setDehumidifier(false);
+                currentStatus.setAirCleaner(false);
+                currentStatus.setSprinkler(false);
+                currentStatus.setFireAlarm(false);
 
                 // LWT 메시지를 고려하여 다시 ONLINE 상태로 갱신
                 existingDevice.setStatus(DeviceStatus.ONLINE);
