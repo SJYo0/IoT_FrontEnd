@@ -80,6 +80,7 @@ function Auth() {
       onPasswordChange={setPw}
       onSubmit={login}
       onSignup={() => navigate("/signup")}
+      onForgotPassword={() => navigate("/forgot-password")}
     />
   );
 }

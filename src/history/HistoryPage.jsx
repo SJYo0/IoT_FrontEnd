@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Calendar, Download } from "lucide-react";
-import { apiFetch } from "../Auth/api";
+import { Calendar } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { apiFetch, readApiMessage } from "../Auth/api";
 
 const PERIODS = [
   { key: "daily", labelKo: "일별", labelEn: "Daily" },
@@ -9,7 +10,8 @@ const PERIODS = [
 ];
 
 const DEVICES_STORAGE_KEY = "iot.connectedDevices";
-const SELECTED_DEVICE_KEY = "iot.selectedDeviceId";
+const SELECTED_DEVICE_ID_KEY = "iot.selectedDeviceId";
+const SELECTED_DEVICE_MAC_KEY = "iot.selectedDeviceMac";
 
 function parseStorageArray(raw) {
   if (!raw) return [];
@@ -22,8 +24,14 @@ function parseStorageArray(raw) {
 }
 
 function getSelectedMac() {
+  const selectedMacFromStorage =
+    sessionStorage.getItem(SELECTED_DEVICE_MAC_KEY) || localStorage.getItem(SELECTED_DEVICE_MAC_KEY) || "";
+  if (selectedMacFromStorage && selectedMacFromStorage !== "00:00:00:00:00:00") {
+    return selectedMacFromStorage;
+  }
+
   const selectedId =
-    sessionStorage.getItem(SELECTED_DEVICE_KEY) || localStorage.getItem(SELECTED_DEVICE_KEY) || "";
+    sessionStorage.getItem(SELECTED_DEVICE_ID_KEY) || localStorage.getItem(SELECTED_DEVICE_ID_KEY) || "";
   const devices =
     parseStorageArray(sessionStorage.getItem(DEVICES_STORAGE_KEY)).length > 0
       ? parseStorageArray(sessionStorage.getItem(DEVICES_STORAGE_KEY))
@@ -57,55 +65,164 @@ function roundSafe(value) {
   return Number.isInteger(num) ? String(num) : num.toFixed(1);
 }
 
+function formatDateLabel(dateString) {
+  if (!dateString) return "-";
+  const [y, m, d] = String(dateString).split("-");
+  if (!y || !m || !d) return dateString;
+  return `${Number(m)}월 ${Number(d)}일`;
+}
+
+function toDateInputValue(date) {
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+function hasAnyMetric(points) {
+  return points.some((point) =>
+    [
+      point?.indoorTemp,
+      point?.indoorHumidity,
+      point?.indoorPressure,
+      point?.indoorTvoc,
+      point?.indoorEco2,
+      point?.indoorFlame,
+      point?.outdoorTemp,
+      point?.wd,
+      point?.ws,
+      point?.outdoorHumidity,
+      point?.rn,
+      point?.ta,
+      point?.hm,
+    ].some((value) => value != null),
+  );
+}
+
+function mondayOfWeek(dateText) {
+  const base = dateText ? new Date(`${dateText}T00:00:00`) : new Date();
+  const day = base.getDay(); // 0: Sun ... 6: Sat
+  const diff = day === 0 ? -6 : 1 - day;
+  base.setDate(base.getDate() + diff);
+  return toDateInputValue(base);
+}
+
+function addDays(dateText, days) {
+  const base = new Date(`${dateText}T00:00:00`);
+  base.setDate(base.getDate() + days);
+  return toDateInputValue(base);
+}
+
 function HistoryPage() {
+  const navigate = useNavigate();
   const [period, setPeriod] = useState("daily");
+  const [viewMode, setViewMode] = useState("indoor");
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [baseDate, setBaseDate] = useState("");
+  const [rangeStartDate, setRangeStartDate] = useState("");
+  const [rangeEndDate, setRangeEndDate] = useState("");
+  const [reloadSeq, setReloadSeq] = useState(0);
+  const [selectedDate, setSelectedDate] = useState(() => toDateInputValue(new Date()));
+  const [weeklyStartDate, setWeeklyStartDate] = useState(() => mondayOfWeek(toDateInputValue(new Date())));
+  const [weeklyEndDate, setWeeklyEndDate] = useState(() => addDays(mondayOfWeek(toDateInputValue(new Date())), 7));
+  const [selectedMonth, setSelectedMonth] = useState(() => toDateInputValue(new Date()).slice(0, 7));
 
   useEffect(() => {
     let active = true;
     const mac = getSelectedMac();
     const query = new URLSearchParams({ period });
     if (mac) query.set("mac", mac);
+    if (period === "daily" && selectedDate) query.set("date", selectedDate);
+    if (period === "weekly") {
+      if (weeklyStartDate) query.set("startDate", weeklyStartDate);
+      if (weeklyEndDate) query.set("endDate", weeklyEndDate);
+    }
+    if (period === "monthly" && selectedMonth) {
+      query.set("month", selectedMonth);
+    }
 
     setLoading(true);
     setError("");
 
     apiFetch(`/api/history?${query.toString()}`)
       .then(async (response) => {
-        if (!response.ok) throw new Error();
+        if (!response.ok) {
+          if (response.status === 401) {
+            const meRes = await apiFetch("/api/auth/me").catch(() => null);
+            if (meRes?.ok) {
+              throw new Error("retryable-auth");
+            }
+            throw new Error("로그인이 만료되었습니다. 다시 로그인해주세요.");
+          }
+          throw new Error(await readApiMessage(response, "히스토리 데이터를 불러오지 못했습니다."));
+        }
         return response.json();
       })
       .then(async (data) => {
         const points = Array.isArray(data?.points) ? data.points : [];
-        if (mac && points.length === 0) {
-          const fallback = await apiFetch(`/api/history?period=${period}`);
+        if (mac && !hasAnyMetric(points)) {
+          const fallbackQuery = new URLSearchParams({ period });
+          if (period === "daily" && selectedDate) fallbackQuery.set("date", selectedDate);
+          if (period === "weekly") {
+            if (weeklyStartDate) fallbackQuery.set("startDate", weeklyStartDate);
+            if (weeklyEndDate) fallbackQuery.set("endDate", weeklyEndDate);
+          }
+          if (period === "monthly" && selectedMonth) fallbackQuery.set("month", selectedMonth);
+          const fallback = await apiFetch(`/api/history?${fallbackQuery.toString()}`);
           if (fallback.ok) return fallback.json();
         }
         return data;
       })
       .then((data) => {
         if (!active) return;
-        setHistory(Array.isArray(data?.points) ? data.points : []);
+        const points = Array.isArray(data?.points) ? data.points : [];
+        setHistory(points);
         setBaseDate(data?.baseDate || "");
+        setRangeStartDate(data?.rangeStartDate || "");
+        setRangeEndDate(data?.rangeEndDate || "");
       })
-      .catch(() => active && setError("히스토리 데이터를 불러오지 못했습니다."))
+      .catch((e) => {
+        if (!active) return;
+        if (String(e?.message || "") === "retryable-auth") {
+          setTimeout(() => {
+            if (!active) return;
+            setReloadSeq((prev) => prev + 1);
+          }, 500);
+          return;
+        }
+        const message = String(e?.message || "").trim();
+        if (message.includes("로그인이 만료되었습니다")) {
+          setError(message);
+          setTimeout(() => navigate("/", { replace: true }), 800);
+          return;
+        }
+        if (message.toLowerCase().includes("failed to fetch") || message.toLowerCase().includes("networkerror")) {
+          setError("서버에 연결할 수 없습니다. 백엔드 실행 상태를 확인해주세요.");
+          return;
+        }
+        setError(message || "히스토리 데이터를 불러오지 못했습니다.");
+      })
       .finally(() => active && setLoading(false));
 
     return () => {
       active = false;
     };
-  }, [period]);
+  }, [period, navigate, reloadSeq, selectedDate, weeklyStartDate, weeklyEndDate, selectedMonth]);
 
   const labels = useMemo(() => history.map((point) => point.label), [history]);
   const indoorTemp = useMemo(() => buildSeries(history, "indoorTemp"), [history]);
   const outdoorTemp = useMemo(() => buildSeries(history, "outdoorTemp"), [history]);
   const indoorHumidity = useMemo(() => buildSeries(history, "indoorHumidity"), [history]);
+  const outdoorHumidity = useMemo(
+    () =>
+      history.map((point) => {
+        const v = point?.outdoorHumidity ?? point?.hm;
+        return v == null ? null : Number(v);
+      }),
+    [history],
+  );
 
-  const temps = [...indoorTemp, ...outdoorTemp].filter((v) => v != null);
-  const hums = indoorHumidity.filter((v) => v != null);
+  const temps = (viewMode === "indoor" ? indoorTemp : outdoorTemp).filter((v) => v != null);
+  const hums = (viewMode === "indoor" ? indoorHumidity : outdoorHumidity).filter((v) => v != null);
   const tempMin = temps.length ? Math.floor(Math.min(...temps) - 2) : 0;
   const tempMax = temps.length ? Math.ceil(Math.max(...temps) + 2) : 40;
   const humMin = hums.length ? Math.floor(Math.min(...hums) - 5) : 0;
@@ -118,20 +235,14 @@ function HistoryPage() {
 
   const indoorTempPath = makePath(indoorTemp, tempMin, tempMax, chartWidth, chartHeight, leftPad, rightPad);
   const outdoorTempPath = makePath(outdoorTemp, tempMin, tempMax, chartWidth, chartHeight, leftPad, rightPad);
-  const humidityPath = makePath(indoorHumidity, humMin, humMax, chartWidth, chartHeight, leftPad, rightPad);
+  const indoorHumidityPath = makePath(indoorHumidity, humMin, humMax, chartWidth, chartHeight, leftPad, rightPad);
+  const outdoorHumidityPath = makePath(outdoorHumidity, humMin, humMax, chartWidth, chartHeight, leftPad, rightPad);
 
-  const downloadCsv = () => {
-    if (!history.length) return;
-    const rows = [["시간", "실내 온도 (°C)", "실외 온도 (°C)", "실내 습도 (%)"]];
-    history.forEach((point) => rows.push([point.label, point.indoorTemp ?? "", point.outdoorTemp ?? "", point.indoorHumidity ?? ""]));
-    const csv = rows.map((r) => r.join(",")).join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `history-${period}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const handleWeeklyStartDateChange = (value) => {
+    if (!value) return;
+    const monday = mondayOfWeek(value);
+    setWeeklyStartDate(monday);
+    setWeeklyEndDate(addDays(monday, 7));
   };
 
   return (
@@ -142,25 +253,85 @@ function HistoryPage() {
             <h2 className="text-[40px] font-black tracking-[-0.02em] text-slate-800">데이터 히스토리</h2>
             <p className="mt-1 text-sm font-medium text-slate-500">DB에 저장된 과거 센서 및 날씨 데이터를 조회합니다.</p>
           </div>
-          <button
-            type="button"
-            onClick={downloadCsv}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-          >
-            <Download className="h-4 w-4" />
-            CSV 다운로드
-          </button>
+          <div className="mt-6">
+            <div className="flex items-center gap-2">
+              <div className="rounded-xl border border-slate-200 bg-white p-1.5">
+                <label className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-600">
+                  <Calendar className="h-4 w-4" />
+                  {period === "weekly" ? (
+                    <>
+                      <span>기간</span>
+                      <input
+                        type="date"
+                        value={weeklyStartDate}
+                        onChange={(e) => handleWeeklyStartDateChange(e.target.value)}
+                        className="rounded-md border border-slate-200 px-2 py-1 text-sm text-slate-700 outline-none focus:border-indigo-400"
+                      />
+                      <span>~</span>
+                      <input
+                        type="date"
+                        value={weeklyEndDate}
+                        readOnly
+                        disabled
+                        className="rounded-md border border-slate-200 px-2 py-1 text-sm text-slate-700 outline-none focus:border-indigo-400"
+                      />
+                    </>
+                  ) : period === "monthly" ? (
+                    <>
+                      <span>월</span>
+                      <input
+                        type="month"
+                        value={selectedMonth}
+                        onChange={(e) => setSelectedMonth(e.target.value)}
+                        className="rounded-md border border-slate-200 px-2 py-1 text-sm text-slate-700 outline-none focus:border-indigo-400"
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <span>날짜</span>
+                      <input
+                        type="date"
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
+                        className="rounded-md border border-slate-200 px-2 py-1 text-sm text-slate-700 outline-none focus:border-indigo-400"
+                      />
+                    </>
+                  )}
+                </label>
+              </div>
+              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-1.5">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("indoor")}
+                  className={`rounded-lg px-4 py-2 text-sm font-semibold ${
+                    viewMode === "indoor" ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  실내
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("outdoor")}
+                  className={`rounded-lg px-4 py-2 text-sm font-semibold ${
+                    viewMode === "outdoor" ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  실외
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-100 px-4 pt-2">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap">
               {PERIODS.map((item) => (
                 <button
                   key={item.key}
                   type="button"
                   onClick={() => setPeriod(item.key)}
-                  className={`rounded-t-lg px-4 py-2 text-sm font-semibold ${
+                  className={`rounded-t-lg px-4 py-2 text-sm font-semibold whitespace-nowrap ${
                     period === item.key
                       ? "bg-indigo-50 text-indigo-700"
                       : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
@@ -173,12 +344,13 @@ function HistoryPage() {
           </div>
 
           <div className="px-4 pb-5 pt-4">
-            <div className="mb-3 flex items-center justify-between">
+            <div className="mb-3">
               <h3 className="text-[34px] font-black text-slate-800">온도 및 습도 변화 추이</h3>
-              <div className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600">
-                <Calendar className="h-4 w-4" />
-                {baseDate || "-"}
-              </div>
+              {(period === "weekly" || period === "monthly") && (
+                <p className="mt-1 text-sm font-semibold text-slate-500">
+                  {formatDateLabel(rangeStartDate)} ~ {formatDateLabel(rangeEndDate)}
+                </p>
+              )}
             </div>
 
             {loading ? (
@@ -196,9 +368,18 @@ function HistoryPage() {
                     y2={chartHeight - 32}
                     stroke="#d1d5db"
                   />
-                  {indoorTempPath && <path d={indoorTempPath} fill="none" stroke="#f59e0b" strokeWidth="3" />}
-                  {outdoorTempPath && <path d={outdoorTempPath} fill="none" stroke="#94a3b8" strokeWidth="3" />}
-                  {humidityPath && <path d={humidityPath} fill="none" stroke="#2563eb" strokeWidth="3" />}
+                  {viewMode === "indoor" && indoorTempPath && (
+                    <path d={indoorTempPath} fill="none" stroke="#f59e0b" strokeWidth="3" />
+                  )}
+                  {viewMode === "outdoor" && outdoorTempPath && (
+                    <path d={outdoorTempPath} fill="none" stroke="#64748b" strokeWidth="3" />
+                  )}
+                  {viewMode === "indoor" && indoorHumidityPath && (
+                    <path d={indoorHumidityPath} fill="none" stroke="#2563eb" strokeWidth="3" />
+                  )}
+                  {viewMode === "outdoor" && outdoorHumidityPath && (
+                    <path d={outdoorHumidityPath} fill="none" stroke="#0ea5e9" strokeWidth="3" />
+                  )}
                   {labels.map((label, index) => {
                     const step = labels.length > 1 ? (chartWidth - leftPad - rightPad) / (labels.length - 1) : 0;
                     const x = leftPad + step * index;
@@ -217,18 +398,29 @@ function HistoryPage() {
                 </svg>
 
                 <div className="mt-2 flex items-center justify-center gap-6 text-sm font-semibold">
-                  <span className="inline-flex items-center gap-1 text-amber-500">
-                    <span className="h-3 w-3 rounded-full bg-amber-500" />
-                    실내 온도 (°C)
-                  </span>
-                  <span className="inline-flex items-center gap-1 text-slate-400">
-                    <span className="h-3 w-3 rounded-full bg-slate-400" />
-                    실외 온도 (°C)
-                  </span>
-                  <span className="inline-flex items-center gap-1 text-blue-600">
-                    <span className="h-3 w-3 rounded-full bg-blue-600" />
-                    실내 습도 (%)
-                  </span>
+                  {viewMode === "indoor" ? (
+                    <>
+                      <span className="inline-flex items-center gap-1 text-amber-500">
+                        <span className="h-3 w-3 rounded-full bg-amber-500" />
+                        실내 온도 (°C)
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-blue-600">
+                        <span className="h-3 w-3 rounded-full bg-blue-600" />
+                        실내 습도 (%)
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="inline-flex items-center gap-1 text-slate-500">
+                        <span className="h-3 w-3 rounded-full bg-slate-500" />
+                        실외 기온 (°C)
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-sky-600">
+                        <span className="h-3 w-3 rounded-full bg-sky-600" />
+                        실외 습도 (%)
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -237,29 +429,57 @@ function HistoryPage() {
             <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200">
               <table className="min-w-full text-left text-sm">
                 <thead className="bg-slate-50 text-slate-600">
-                  <tr>
-                    <th className="px-5 py-3 font-bold">시간</th>
-                    <th className="px-5 py-3 font-bold">실내 온도 (°C)</th>
-                    <th className="px-5 py-3 font-bold">실외 온도 (°C)</th>
-                    <th className="px-5 py-3 font-bold">실내 습도 (%)</th>
-                  </tr>
+                  {viewMode === "indoor" ? (
+                    <tr>
+                      <th className="px-5 py-3 font-bold">시간</th>
+                      <th className="px-5 py-3 font-bold">실내 온도 (°C)</th>
+                      <th className="px-5 py-3 font-bold">실내 습도 (%)</th>
+                      <th className="px-5 py-3 font-bold">기압 (hPa)</th>
+                      <th className="px-5 py-3 font-bold">유해 화학물질 (TVOC)</th>
+                      <th className="px-5 py-3 font-bold">이산화탄소 (eCO2)</th>
+                      <th className="px-5 py-3 font-bold">화염세기</th>
+                    </tr>
+                  ) : (
+                    <tr>
+                      <th className="px-5 py-3 font-bold">시간</th>
+                      <th className="px-5 py-3 font-bold">기온 (°C)</th>
+                      <th className="px-5 py-3 font-bold">풍향 (deg)</th>
+                      <th className="px-5 py-3 font-bold">풍속 (m/s)</th>
+                      <th className="px-5 py-3 font-bold">습도 (%)</th>
+                      <th className="px-5 py-3 font-bold">강수량 (mm)</th>
+                    </tr>
+                  )}
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
                   {history.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="px-5 py-8 text-center text-slate-500">
+                      <td colSpan={viewMode === "indoor" ? 7 : 6} className="px-5 py-8 text-center text-slate-500">
                         표시할 데이터가 없습니다.
                       </td>
                     </tr>
                   ) : (
-                    history.map((point, index) => (
-                      <tr key={point.label + index}>
-                        <td className="px-5 py-3 font-semibold text-slate-700">{point.label}</td>
-                        <td className="px-5 py-3 font-semibold text-amber-600">{roundSafe(point.indoorTemp)}</td>
-                        <td className="px-5 py-3 font-semibold text-slate-500">{roundSafe(point.outdoorTemp)}</td>
-                        <td className="px-5 py-3 font-semibold text-blue-600">{roundSafe(point.indoorHumidity)}</td>
-                      </tr>
-                    ))
+                    history.map((point, index) =>
+                      viewMode === "indoor" ? (
+                        <tr key={point.label + index}>
+                          <td className="px-5 py-3 font-semibold text-slate-700">{point.label}</td>
+                          <td className="px-5 py-3 font-semibold text-amber-600">{roundSafe(point.indoorTemp)}</td>
+                          <td className="px-5 py-3 font-semibold text-blue-600">{roundSafe(point.indoorHumidity)}</td>
+                          <td className="px-5 py-3 font-semibold text-slate-600">{roundSafe(point.indoorPressure ?? point.pressure)}</td>
+                          <td className="px-5 py-3 font-semibold text-violet-600">{roundSafe(point.indoorTvoc ?? point.tvoc)}</td>
+                          <td className="px-5 py-3 font-semibold text-emerald-600">{roundSafe(point.indoorEco2 ?? point.eco2)}</td>
+                          <td className="px-5 py-3 font-semibold text-rose-600">{roundSafe(point.indoorFlame ?? point.flameValue)}</td>
+                        </tr>
+                      ) : (
+                        <tr key={point.label + index}>
+                          <td className="px-5 py-3 font-semibold text-slate-700">{point.label}</td>
+                          <td className="px-5 py-3 font-semibold text-slate-600">{roundSafe(point.outdoorTemp ?? point.ta)}</td>
+                          <td className="px-5 py-3 font-semibold text-slate-600">{roundSafe(point.wd)}</td>
+                          <td className="px-5 py-3 font-semibold text-slate-600">{roundSafe(point.ws)}</td>
+                          <td className="px-5 py-3 font-semibold text-sky-600">{roundSafe(point.outdoorHumidity ?? point.hm)}</td>
+                          <td className="px-5 py-3 font-semibold text-emerald-600">{roundSafe(point.rn)}</td>
+                        </tr>
+                      ),
+                    )
                   )}
                 </tbody>
               </table>
