@@ -12,4 +12,6 @@ public interface WeatherRepository extends JpaRepository<WeatherData, Long> {
     boolean existsByCreatedAtAndLocationCode(LocalDateTime createdAt, Integer locationCode);
 
     Optional<WeatherData> findTopByOrderByCreatedAtDesc();
+
+    List<WeatherData> findByCreatedAtBetweenOrderByCreatedAtAsc(LocalDateTime start, LocalDateTime end);
 }

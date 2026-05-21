@@ -1,8 +1,12 @@
 package com.iot_sw.iot_web_backend.Auth.controller;
 
 import com.iot_sw.iot_web_backend.Auth.dto.LoginRequestDto;
+import com.iot_sw.iot_web_backend.Auth.dto.PasswordResetConfirmDto;
+import com.iot_sw.iot_web_backend.Auth.dto.PasswordResetRequestDto;
+import com.iot_sw.iot_web_backend.Auth.dto.PasswordResetRequestResponseDto;
 import com.iot_sw.iot_web_backend.Auth.dto.SignUpRequestDto;
 import com.iot_sw.iot_web_backend.Auth.service.AuthService;
+import com.iot_sw.iot_web_backend.Auth.service.PasswordResetService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
@@ -24,6 +28,7 @@ import java.util.Map;
 public class AuthController {
 
     private final AuthService authService;
+    private final PasswordResetService passwordResetService;
 
     // 회원가입
     @PostMapping("/signup")
@@ -63,6 +68,10 @@ public class AuthController {
 
     @PostMapping("/logout")
     public Map<String, String> logout(HttpServletRequest request) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.isAuthenticated()) {
+            authService.markLogout(authentication.getName());
+        }
         HttpSession session = request.getSession(false);
         if (session != null) {
             session.invalidate();
@@ -70,5 +79,16 @@ public class AuthController {
         SecurityContextHolder.clearContext();
 
         return Map.of("message", "로그아웃 성공");
+    }
+
+    @PostMapping("/password-reset/request")
+    public PasswordResetRequestResponseDto requestPasswordReset(@Valid @RequestBody PasswordResetRequestDto dto) {
+        return passwordResetService.request(dto);
+    }
+
+    @PostMapping("/password-reset/confirm")
+    public Map<String, String> confirmPasswordReset(@Valid @RequestBody PasswordResetConfirmDto dto) {
+        passwordResetService.confirm(dto);
+        return Map.of("message", "비밀번호가 변경되었습니다.");
     }
 }

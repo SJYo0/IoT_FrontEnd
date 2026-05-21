@@ -52,4 +52,8 @@ public class AlertLog {
     public void resolve() {
         this.resolvedAt = LocalDateTime.now();
     }
+
+    public void markRead() {
+        this.isRead = true;
+    }
 }
