@@ -59,7 +59,7 @@ public class AnalysisService {
 
     // AI 분석 및 제어 명령
     public void requestAiAnalysis(Long deviceId, AnalysisRequestDto requestDto) {
-        log.info("[AI] 분석 요청 시작 - 기기 ID: {}", deviceId);
+        log.info("[AI] 분석 요청 시작 - 기기 ID:{}", deviceId);
 
         webClient.post()
                 .uri("/api/v1/analyze")
