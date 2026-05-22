@@ -2,7 +2,8 @@ const envBase =
   typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE_URL
     ? String(import.meta.env.VITE_API_BASE_URL).replace(/\/$/, "")
     : null;
-export const API_BASE_URL = envBase ?? "";
+export const API_BASE_URL =
+  envBase ?? "";
 
 let csrfTokenPromise = null;
 

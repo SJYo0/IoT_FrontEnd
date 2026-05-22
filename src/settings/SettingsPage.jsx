@@ -78,6 +78,7 @@ function SettingsPage() {
   const [toggles, setToggles] = useState(DEFAULT_DEVICE_CONTROL_STATE);
   const [selectedMac, setSelectedMac] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [saveButtonState, setSaveButtonState] = useState("idle");
 
   useEffect(() => {
     const applySelectedMac = (mac) => {
@@ -123,15 +124,24 @@ function SettingsPage() {
   const saveSettings = async () => {
     if (!selectedMac || isSaving) return;
     setIsSaving(true);
+    setSaveButtonState("saving");
     try {
       const saved = await saveDeviceControlState("environment", selectedMac, toggles);
       setToggles(saved);
+      setSaveButtonState("success");
     } catch {
       // keep optimistic local state and allow retry
+      setSaveButtonState("idle");
     } finally {
       setIsSaving(false);
     }
   };
+
+  useEffect(() => {
+    if (saveButtonState !== "success") return undefined;
+    const timer = window.setTimeout(() => setSaveButtonState("idle"), 2200);
+    return () => window.clearTimeout(timer);
+  }, [saveButtonState]);
 
   return (
     <div className="min-h-full bg-[#eef1f6] px-8 py-8">
@@ -175,10 +185,16 @@ function SettingsPage() {
             type="button"
             onClick={saveSettings}
             disabled={!selectedMac || isSaving}
-            className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-9 py-4 text-[22px] font-bold text-white shadow-[0_8px_20px_rgba(79,70,229,0.35)] transition hover:bg-indigo-700"
+            className={`inline-flex items-center gap-2 rounded-2xl px-9 py-4 text-[22px] font-bold text-white shadow-[0_8px_20px_rgba(79,70,229,0.35)] transition ${
+              isSaving
+                ? "cursor-not-allowed bg-indigo-600/80"
+                : saveButtonState === "success"
+                  ? "bg-emerald-600 hover:bg-emerald-700"
+                  : "bg-indigo-600 hover:bg-indigo-700"
+            }`}
           >
-            <Save className="h-5 w-5" />
-            {isSaving ? "저장 중..." : "설정 저장하기"}
+            {saveButtonState === "saving" ? null : <Save className="h-5 w-5" />}
+            {saveButtonState === "success" ? "저장 완료" : "설정 저장하기"}
           </button>
         </div>
       </div>

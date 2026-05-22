@@ -4,6 +4,7 @@ import { useLocation } from "react-router-dom";
 import { apiFetch } from "../Auth/api";
 
 const SELECTED_DEVICE_MAC_KEY = "iot.selectedDeviceMac";
+const DISMISSED_ALERT_KEYS_STORAGE_KEY = "iot.dismissedAlertKeys";
 
 function createStableId(prefix) {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -12,15 +13,17 @@ function createStableId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function formatAgoText(createdAt) {
+function formatAlertDateTime(createdAt) {
   const ts = createdAt ? new Date(createdAt).getTime() : NaN;
-  if (!Number.isFinite(ts)) return "방금 전";
-  const diffMin = Math.max(0, Math.floor((Date.now() - ts) / 60000));
-  if (diffMin < 1) return "방금 전";
-  if (diffMin < 60) return `${diffMin}분 전`;
-  const diffHour = Math.floor(diffMin / 60);
-  if (diffHour < 24) return `${diffHour}시간 전`;
-  return `${Math.floor(diffHour / 24)}일 전`;
+  if (!Number.isFinite(ts)) return "-";
+  const d = new Date(ts);
+  const YYYY = String(d.getFullYear());
+  const MM = String(d.getMonth() + 1).padStart(2, "0");
+  const DD = String(d.getDate()).padStart(2, "0");
+  const HH = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${YYYY}-${MM}-${DD} ${HH}:${mm}:${ss}`;
 }
 
 function alertText(alert) {
@@ -29,9 +32,17 @@ function alertText(alert) {
   return "알람이 발생했습니다.";
 }
 
+function alertDedupeKey(alert) {
+  return [alert?.category || "", alert?.severity || "", alert?.message || "", alert?.createdAt || ""].join("|");
+}
+
+function normalizeMac(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
 function TopSidebar() {
   const location = useLocation();
-  const hidePaths = ["/", "/signup"];
+  const hidePaths = ["/", "/signup", "/forgot-password"];
   const shouldHide = hidePaths.includes(location.pathname);
   const [currentUsername, setCurrentUsername] = useState("");
   const [alarmExpanded, setAlarmExpanded] = useState(false);
@@ -39,6 +50,59 @@ function TopSidebar() {
   const [recentAlerts, setRecentAlerts] = useState([]);
   const [sessionDevices, setSessionDevices] = useState([]);
   const [selectedDeviceIdx, setSelectedDeviceIdx] = useState(0);
+  const seenAlertKeysRef = useState(() => new Set())[0];
+  const dismissedAlertKeysRef = useState(() => new Set())[0];
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(DISMISSED_ALERT_KEYS_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      parsed.forEach((key) => {
+        if (typeof key === "string" && key) {
+          dismissedAlertKeysRef.add(key);
+        }
+      });
+    } catch {
+      // ignore parse/storage failures
+    }
+  }, [dismissedAlertKeysRef]);
+
+  const persistDismissedAlertKeys = () => {
+    try {
+      sessionStorage.setItem(
+        DISMISSED_ALERT_KEYS_STORAGE_KEY,
+        JSON.stringify(Array.from(dismissedAlertKeysRef)),
+      );
+    } catch {
+      // ignore storage failures
+    }
+  };
+
+  const selectedDevice = sessionDevices[selectedDeviceIdx] || sessionDevices[0] || null;
+  const selectedDeviceMac = normalizeMac(selectedDevice?.mac || "");
+
+  const markAllAlertsReadOnServer = async () => {
+    if (!selectedDeviceMac) return;
+    try {
+      await apiFetch(`/api/alerts/read/${encodeURIComponent(selectedDeviceMac)}`, { method: "PATCH" });
+    } catch {
+      // ignore network errors
+    }
+  };
+
+  const markCategoryReadOnServer = async (category) => {
+    if (!selectedDeviceMac || !category) return;
+    try {
+      await apiFetch(
+        `/api/alerts/read/${encodeURIComponent(selectedDeviceMac)}/category?category=${encodeURIComponent(category)}`,
+        { method: "PATCH" },
+      );
+    } catch {
+      // ignore network errors
+    }
+  };
 
   useEffect(() => {
     if (shouldHide) return;
@@ -117,18 +181,30 @@ function TopSidebar() {
 
       const createdAt = detail.timestamp ? new Date(detail.timestamp) : new Date();
       setRecentAlerts((prev) => {
+        const incoming = {
+          id: createStableId("alert"),
+          category: detail.category,
+          severity: detail.severity,
+          message: detail.message || "",
+          createdAt: createdAt.toISOString(),
+          read: false,
+        };
+        const key = alertDedupeKey(incoming);
+        if (
+          dismissedAlertKeysRef.has(key) ||
+          seenAlertKeysRef.has(key) ||
+          prev.some((item) => alertDedupeKey(item) === key)
+        ) {
+          return prev;
+        }
+        seenAlertKeysRef.add(key);
         const next = [
-          {
-            id: createStableId("alert"),
-            category: detail.category,
-            severity: detail.severity,
-            message: detail.message || "",
-            createdAt: createdAt.toISOString(),
-            read: false,
-          },
+          incoming,
           ...prev,
         ];
-        return next.slice(0, 20);
+        return next
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, 20);
       });
     };
 
@@ -136,8 +212,7 @@ function TopSidebar() {
     return () => window.removeEventListener("iot-alert-raised", onAlertRaised);
   }, []);
 
-  const unreadAlerts = useMemo(() => recentAlerts.filter((alert) => !alert.read).length, [recentAlerts]);
-  const selectedDevice = sessionDevices[selectedDeviceIdx] || sessionDevices[0] || null;
+  const unreadAlerts = useMemo(() => recentAlerts.length, [recentAlerts]);
   const displayUsername = currentUsername.trim() || "Admin User";
   const userInitial = displayUsername.charAt(0).toUpperCase();
 
@@ -210,7 +285,16 @@ function TopSidebar() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setRecentAlerts((alerts) => alerts.map((alert) => ({ ...alert, read: true })))}
+                    onClick={() =>
+                      setRecentAlerts((alerts) => {
+                        markAllAlertsReadOnServer();
+                        alerts.forEach((alert) => {
+                          dismissedAlertKeysRef.add(alertDedupeKey(alert));
+                        });
+                        persistDismissedAlertKeys();
+                        return [];
+                      })
+                    }
                     className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
                   >
                     모두 읽음
@@ -227,9 +311,15 @@ function TopSidebar() {
                       key={alert.id}
                       type="button"
                       onClick={() => {
-                        setRecentAlerts((alerts) =>
-                          alerts.map((item) => (item.id === alert.id ? { ...item, read: true } : item)),
-                        );
+                        setRecentAlerts((alerts) => {
+                          const target = alerts.find((item) => item.id === alert.id);
+                          if (target) {
+                            markCategoryReadOnServer(target.category);
+                            dismissedAlertKeysRef.add(alertDedupeKey(target));
+                            persistDismissedAlertKeys();
+                          }
+                          return alerts.filter((item) => item.id !== alert.id);
+                        });
                       }}
                       className="w-full bg-white px-3 py-3 text-left hover:bg-slate-100"
                     >
@@ -242,12 +332,9 @@ function TopSidebar() {
                           <Info className="h-4 w-4 shrink-0 text-blue-500" />
                         )}
                         <p className="min-w-0 flex-1 truncate text-[15px] font-semibold text-slate-700">{alertText(alert)}</p>
-                        <span className="inline-flex items-center gap-2 pl-2">
-                          {!alert.read && <span className="h-2 w-2 shrink-0 rounded-full bg-blue-500" />}
-                        </span>
                       </div>
                       <p className="pl-6 pt-1 text-xs font-medium text-slate-400">
-                        {formatAgoText(alert.createdAt)}
+                        {formatAlertDateTime(alert.createdAt)}
                       </p>
                     </button>
                   ))}
