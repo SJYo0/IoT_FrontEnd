@@ -59,7 +59,7 @@ public class AnalysisService {
 
     // AI 분석 및 제어 명령
     public void requestAiAnalysis(Long deviceId, AnalysisRequestDto requestDto) {
-        log.info("[AI] 분석 요청 시작 - 기기 ID: {}", deviceId);
+        log.info("[AI] 분석 요청 시작 - 기기 ID:{}", deviceId);
 
         webClient.post()
                 .uri("/api/v1/analyze")
@@ -142,7 +142,7 @@ public class AnalysisService {
     private void updateControlAndLog(Device device, AiAnalysis analysis, AnalysisResponseDto.Control newControlDto) {
         // 현재 상태 조회
         ControlStatus currentStatus = controlStatusRepository.findByDeviceId(device.getId())
-                .orElseThrow(() -> new RuntimeException("제어 상태 테이블이 없습니다."));
+                .orElseGet(() -> createDefaultControlStatus(device));
 
         // 로그 기록을 위한 이전 상태 복사 (Deep Copy)
         Map<String, Object> previousStatus = objectMapper.convertValue(currentStatus, Map.class);
@@ -173,5 +173,22 @@ public class AnalysisService {
                 .createdAt(LocalDateTime.now())
                 .build();
         controlLogRepository.save(logEntity);
+    }
+
+    private ControlStatus createDefaultControlStatus(Device device) {
+        return ControlStatus.builder()
+                .device(device)
+                .northWindow(false)
+                .southWindow(false)
+                .eastWindow(false)
+                .westWindow(false)
+                .airConditioner(false)
+                .heating(false)
+                .humidifier(false)
+                .dehumidifier(false)
+                .airCleaner(false)
+                .sprinkler(false)
+                .fireAlarm(false)
+                .build();
     }
 }

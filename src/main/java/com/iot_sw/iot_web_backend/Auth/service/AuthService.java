@@ -3,6 +3,8 @@ package com.iot_sw.iot_web_backend.Auth.service;
 import com.iot_sw.iot_web_backend.Auth.dto.LoginRequestDto;
 import com.iot_sw.iot_web_backend.Auth.dto.SignUpRequestDto;
 import com.iot_sw.iot_web_backend.Auth.entity.User;
+import com.iot_sw.iot_web_backend.Auth.entity.UserLog;
+import com.iot_sw.iot_web_backend.Auth.repository.UserLogRepository;
 import com.iot_sw.iot_web_backend.Auth.repository.UserRepository;
 import com.iot_sw.iot_web_backend.device.entity.Device;
 import com.iot_sw.iot_web_backend.device.enums.DeviceStatus;
@@ -20,6 +22,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
@@ -41,6 +44,7 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final LoginAttemptService loginAttemptService;
     private final DeviceRepository deviceRepository;
+    private final UserLogRepository userLogRepository;
 
     // 회원가입
     public void signup(SignUpRequestDto dto) {
@@ -88,6 +92,7 @@ public class AuthService {
             request.changeSessionId();
             session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context);
             refreshDeviceContextInSession(session, username);
+            createLoginLog(authentication.getName());
             loginAttemptService.clear(attemptKey);
         } catch (AuthenticationException exception) {
             loginAttemptService.recordFailure(attemptKey);
@@ -135,5 +140,24 @@ public class AuthService {
             uniqueByMac.putIfAbsent(mac, new SessionDeviceItem(mac, ip, online));
                 });
         return new ArrayList<>(uniqueByMac.values());
+    }
+
+    @Transactional
+    public void createLoginLog(String username) {
+        userRepository.findByUsername(username).ifPresent(user ->
+                userLogRepository.save(UserLog.builder().user(user).build())
+        );
+    }
+
+    @Transactional
+    public void markLogout(String username) {
+        if (username == null || username.isBlank()) return;
+        userRepository.findByUsername(username).ifPresent(user ->
+                userLogRepository.findTopByUser_IdAndLogoutAtIsNullOrderByLoginAtDesc(user.getId())
+                        .ifPresent(log -> {
+                            log.setLogoutAt(java.time.LocalDateTime.now());
+                            userLogRepository.save(log);
+                        })
+        );
     }
 }
