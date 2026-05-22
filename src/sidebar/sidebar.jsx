@@ -38,7 +38,7 @@ const Sidebar = () => {
     };
   }, [deviceContextMenu.open]);
 
-  const hidePaths = ['/', '/signup'];
+  const hidePaths = ['/', '/signup', '/forgot-password'];
   if (hidePaths.includes(location.pathname)) return null;
 
   const handleLogout = async () => {

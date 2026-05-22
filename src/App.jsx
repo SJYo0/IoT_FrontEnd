@@ -8,6 +8,7 @@ import DeviceConnectionInfoPage from "./registerDevice/DeviceConnectionInfoPage"
 
 import Auth from './Auth/Auth';
 import Signup from './Auth/Signup';
+import ForgotPassword from './Auth/ForgotPassword';
 import Weather from './DashBoard/Weather';
 import CctvPage from './CCTV/CctvPage';
 import HistoryPage from "./history/HistoryPage";
@@ -26,7 +27,6 @@ function ProtectedRoute({ children }) {
         if (!active) {
           return;
         }
-
         setStatus(response.ok ? "authenticated" : "unauthenticated");
       })
       .catch(() => {
@@ -61,10 +61,11 @@ function App() {
         <div className="flex min-w-0 flex-1 flex-col">
           <TopSidebar />
           <div className="flex-1 overflow-y-auto">
-            {/* URL에 따라 화면 바꾸기 */}
+            {/* URL에 따라 화면 바꾸기  */}
             <Routes>
               <Route path="/" element={<Auth />} />
               <Route path="/signup" element={<Signup />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route
                 path="/dashboard"
                 element={
