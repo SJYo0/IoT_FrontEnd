@@ -60,12 +60,14 @@ spring:
       on-profile: dev
   datasource:
     url: jdbc:mariadb://localhost:3307/iot_db?createDatabaseIfNotExist=true&characterEncoding=UTF-8&serverTimezone=Asia/Seoul&rewriteBatchedStatements=true
+    username: ${MYSQL_USER:project_user}
+    password: ${MYSQL_PASSWORD:1234}
   jpa:
     show-sql: true
 
 llm:
   server:
-    url: http://210.104.76.141:8000
+    url: http://127.0.0.1:8000
 MQTT_BROKER_URL: tcp://210.104.76.141:1883
 
 ---

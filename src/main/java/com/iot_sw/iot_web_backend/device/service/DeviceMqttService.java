@@ -136,9 +136,9 @@ public class DeviceMqttService {
         }
 
         try {
-            log.info("[DB] {}개의 데이터를 MariaDB에 배치 인서트 시작", toSave.size());
+            //log.info("[DB] {}개의 데이터를 MariaDB에 배치 인서트 시작", toSave.size());
             sensorRepository.saveAll(toSave);
-            log.info("[DB] 배치 인서트 성공.");
+            //log.info("[DB] 배치 인서트 성공.");
         } catch (Exception e) {
             log.error("[DB] 배치 인서트 실패: {}", e.getMessage());
         }
