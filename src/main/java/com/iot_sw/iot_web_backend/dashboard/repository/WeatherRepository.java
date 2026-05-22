@@ -15,6 +15,8 @@ public interface WeatherRepository extends JpaRepository<WeatherData, Long> {
 
     Optional<WeatherData> findTopByOrderByCreatedAtDesc();
 
+    List<WeatherData> findByCreatedAtBetweenOrderByCreatedAtAsc(LocalDateTime start, LocalDateTime end);
+
     @Query("SELECT " +
             "MIN(w.tempTa) as minTemp, MAX(w.tempTa) as maxTemp, AVG(w.tempTa) as avgTemp, " +
             "MIN(w.windSpeedWs) as minWind, MAX(w.windSpeedWs) as maxWind, AVG(w.windSpeedWs) as avgWind, " +

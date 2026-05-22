@@ -6,8 +6,16 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
 
 public interface SensorRepository extends JpaRepository<SensorTelemetry, Long> {
+    List<SensorTelemetry> findByDevice_MacIdAndMeasuredAtBetweenOrderByMeasuredAtAsc(String macId, LocalDateTime start, LocalDateTime end);
+
+    List<SensorTelemetry> findByMeasuredAtBetweenOrderByMeasuredAtAsc(LocalDateTime start, LocalDateTime end);
+
+    Optional<SensorTelemetry> findTopByDevice_MacIdOrderByMeasuredAtDesc(String macId);
+
     @Query("SELECT " +
             "MIN(s.temperature) as minTemp, MAX(s.temperature) as maxTemp, AVG(s.temperature) as avgTemp, " +
             "MIN(s.humidity) as minHum, MAX(s.humidity) as maxHum, AVG(s.humidity) as avgHum, " +
@@ -25,4 +33,5 @@ public interface SensorRepository extends JpaRepository<SensorTelemetry, Long> {
         Integer getMinTvoc(); Integer getMaxTvoc(); Double getAvgTvoc();
         Integer getMinEco2(); Integer getMaxEco2(); Double getAvgEco2();
     }
+
 }

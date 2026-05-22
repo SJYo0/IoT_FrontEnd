@@ -65,7 +65,7 @@ public class DeviceService {
 
                 // 제어상태를 0으로 초기화
                 ControlStatus currentStatus = controlStatusRepository.findByDeviceId(existingDevice.getId())
-                        .orElseThrow(() -> new RuntimeException("제어 상태 테이블이 없습니다."));
+                        .orElseGet(() -> createDefaultControlStatus(existingDevice));
 
                 currentStatus.setNorthWindow(false);
                 currentStatus.setSouthWindow(false);
@@ -78,6 +78,7 @@ public class DeviceService {
                 currentStatus.setAirCleaner(false);
                 currentStatus.setSprinkler(false);
                 currentStatus.setFireAlarm(false);
+                controlStatusRepository.save(currentStatus);
 
                 // LWT 메시지를 고려하여 다시 ONLINE 상태로 갱신
                 existingDevice.setStatus(DeviceStatus.ONLINE);
@@ -137,6 +138,8 @@ public class DeviceService {
         Device savedDevice = deviceRepository.save(device);
 
         saveDeviceLog(device, prevStatus, DeviceStatus.ONLINE.name());
+        controlStatusRepository.findByDeviceId(savedDevice.getId())
+                .orElseGet(() -> controlStatusRepository.save(createDefaultControlStatus(savedDevice)));
 
         // 승인 기록 DB 삽입
         ApproveLog approveLog = ApproveLog.builder()
@@ -208,5 +211,22 @@ public class DeviceService {
                 .newStatus(newStatus)
                 .build();
         deviceLogRepository.save(log);
+    }
+
+    private ControlStatus createDefaultControlStatus(Device device) {
+        return ControlStatus.builder()
+                .device(device)
+                .northWindow(false)
+                .southWindow(false)
+                .eastWindow(false)
+                .westWindow(false)
+                .airConditioner(false)
+                .heating(false)
+                .humidifier(false)
+                .dehumidifier(false)
+                .airCleaner(false)
+                .sprinkler(false)
+                .fireAlarm(false)
+                .build();
     }
 }
