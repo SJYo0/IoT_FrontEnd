@@ -300,7 +300,7 @@ function Weather() {
   // 💡 CCTV 전체화면을 위한 ref 생성
   const cctvContainerRef = useRef(null);
 
-  const RPI_IP = "192.168.137.111"; 
+  const MEDIAMTX_IP = import.meta.env.VITE_MEDIAMTX_IP;
 
   const weather = useMemo(
     () => (Array.isArray(data?.weather) ? data.weather : []),
@@ -379,11 +379,11 @@ function Weather() {
   useEffect(() => {
     if (data) {
       const timer = setTimeout(() => {
-        setCctvSrc(`http://${RPI_IP}:8889/cam`);
+        setCctvSrc(`http://${MEDIAMTX_IP}:8889/cam`);
       }, 500); // 0.5초 뒤에 렌더링
       return () => clearTimeout(timer);
     }
-  }, [data]);
+  }, [data, MEDIAMTX_IP]);
 
   useEffect(() => {
     activeMacRef.current = activeMac;
@@ -414,8 +414,8 @@ function Weather() {
 
 
   useEffect(() => {
-    const brokerHost = "poor-pregnant-aaa-divorce.trycloudflare.com";
-    const brokerPort = 443;
+    const brokerHost = import.meta.env.VITE_MQTT_BROKER;
+    const brokerPort = 9001;
     const clientId = "react_client_" + Math.random().toString(16).substr(2, 8);
     const targetTopic = "gateway/+/telemetry";
     const targetTopic2 = "webbackend/alarm/+";
@@ -496,7 +496,7 @@ function Weather() {
 
     client.connect({
       timeout: 3,
-      useSSL: true,
+      useSSL: window.location.protocol === "https:",
       onSuccess: () => {
         client.subscribe(targetTopic);
         client.subscribe(targetTopic2);
@@ -627,6 +627,8 @@ function Weather() {
   }
 
   const latest = weather[0] ?? {};
+  const dryWarning = Boolean(data?.dryWarning);
+  const windWarning = Boolean(data?.windWarning);
   const ta = apiNumber(latest.ta);
   const hm = apiNumber(latest.hm);
   const ws = apiNumber(latest.ws);
@@ -845,11 +847,11 @@ function Weather() {
                 </div>
 
                 <div className="col-span-2 border-t border-slate-200/80 px-3 py-1 text-center text-[11px]">
-                  <p className={`font-semibold ${data.dryWarning ? "text-rose-600" : "text-emerald-700"}`}>
-                    건조주의보 {data.dryWarning ? "발령" : "미발령"}
+                  <p className={`font-semibold ${dryWarning ? "text-rose-600" : "text-emerald-700"}`}>
+                    건조주의보 {dryWarning ? "발령" : "미발령"}
                   </p>
-                  <p className={`mt-1 font-semibold ${data.windWarning ? "text-rose-600" : "text-emerald-700"}`}>
-                    강풍주의보 {data.windWarning ? "발령" : "미발령"}
+                  <p className={`mt-1 font-semibold ${windWarning ? "text-rose-600" : "text-emerald-700"}`}>
+                    강풍주의보 {windWarning ? "발령" : "미발령"}
                   </p>
                 </div>
               </div>
