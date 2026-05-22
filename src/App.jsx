@@ -61,7 +61,7 @@ function App() {
         <div className="flex min-w-0 flex-1 flex-col">
           <TopSidebar />
           <div className="flex-1 overflow-y-auto">
-            {/* URL에 따라 화면 바꾸기 */}
+            {/* URL에 따라 화면 바꾸기  */}
             <Routes>
               <Route path="/" element={<Auth />} />
               <Route path="/signup" element={<Signup />} />
