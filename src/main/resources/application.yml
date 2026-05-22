@@ -65,7 +65,7 @@ spring:
 
 llm:
   server:
-    url: http://210.104.76.141:8000
+    url: http://127.0.0.1:8000
 MQTT_BROKER_URL: tcp://210.104.76.141:1883
 
 ---
