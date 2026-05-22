@@ -1,8 +1,26 @@
-"use client";
+const fs = require("fs");
+const path = require("path");
+
+const target = path.join(__dirname, "../src/components/ui/gamified-login-card.jsx");
+
+const ko = {
+  success: "\uC131\uACF5",
+  title: "\uAD00\uB9AC\uC790",
+  subtitle: "\uAD00\uB9AC\uC790 \uACC4\uC815\uC73C\uB85C \uB85C\uADF8\uC778",
+  username: "\uC544\uC774\uB514",
+  usernamePh: "\uC544\uC774\uB514\uB97C \uC785\uB825\uD558\uC138\uC694",
+  password: "\uBE44\uBC00\uBC88\uD638",
+  loading: "\uCC98\uB9AC \uC911...",
+  login: "\uB85C\uADF8\uC778",
+  forgot: "\uBE44\uBC00\uBC88\uD638 \uCC3E\uAE30",
+  noAccount: "\uACC4\uC815\uC774 \uC5C6\uC73C\uC2E0\uAC00\uC694?",
+  signup: "\uD68C\uC6D0\uAC00\uC785",
+};
+
+const content = `"use client";
 
 import * as React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { AUTH_LABELS as L } from "../../constants/authLabels";
 import { Button } from "./button";
 import { Input } from "./input";
 import { Label } from "./label";
@@ -24,7 +42,7 @@ export default function GamifiedLoginCard({
   const [particles, setParticles] = React.useState([]);
 
   React.useEffect(() => {
-    if (typeof message === "string" && message.includes(L.loginSuccessKeyword)) {
+    if (typeof message === "string" && message.includes("${ko.success}")) {
       setSuccess(true);
     }
   }, [message]);
@@ -71,27 +89,27 @@ export default function GamifiedLoginCard({
         className="relative z-20 flex w-full max-w-md flex-col gap-6 rounded-2xl border border-zinc-200 bg-white p-8 shadow-2xl"
       >
         <div className="text-center">
-          <h2 className="text-3xl font-bold text-black">IoT Dashboard {L.dashboardTitle}</h2>
-          <p className="mt-1 text-sm text-zinc-500">{L.loginSubtitle}</p>
+          <h2 className="text-3xl font-bold text-black">IoT Dashboard ${ko.title}</h2>
+          <p className="mt-1 text-sm text-zinc-500">${ko.subtitle}</p>
         </div>
 
         <div className="mt-2 flex flex-col gap-4">
-          <motion.div>
+          <div>
             <Label htmlFor="email" className="text-black">
-              {L.username}
+              ${ko.username}
             </Label>
             <Input
               id="email"
               type="text"
-              placeholder={L.usernamePlaceholder}
+              placeholder="${ko.usernamePh}"
               value={username}
               onChange={(e) => onUsernameChange?.(e.target.value)}
               className="mt-1 border-zinc-300 bg-white text-black transition-transform duration-200 hover:scale-[1.02]"
             />
-          </motion.div>
-          <motion.div>
+          </div>
+          <div>
             <Label htmlFor="password" className="text-black">
-              {L.password}
+              ${ko.password}
             </Label>
             <Input
               id="password"
@@ -101,7 +119,7 @@ export default function GamifiedLoginCard({
               onChange={(e) => onPasswordChange?.(e.target.value)}
               className="mt-1 border-zinc-300 bg-white text-black transition-transform duration-200 hover:scale-[1.02]"
             />
-          </motion.div>
+          </div>
         </div>
 
         {message && <p className="text-center text-sm text-rose-600">{message}</p>}
@@ -111,25 +129,29 @@ export default function GamifiedLoginCard({
           onClick={handleLogin}
           disabled={loading}
         >
-          {loading ? L.loading : L.login}
+          {loading ? "${ko.loading}" : "${ko.login}"}
         </Button>
 
         {!success && (
-          <motion.div className="mt-1 space-y-1 text-center text-sm text-zinc-600">
-            <p>
-              {L.noAccount}{" "}
-              <button type="button" onClick={onSignup} className="text-black hover:underline">
-                {L.signup}
-              </button>
-            </p>
+          <div className="mt-1 space-y-1 text-center text-sm text-zinc-600">
             <p>
               <button type="button" onClick={onForgotPassword} className="text-black hover:underline">
-                {L.forgotPassword}
+                ${ko.forgot}
               </button>
             </p>
-          </motion.div>
+            <p>
+              ${ko.noAccount}{" "}
+              <button type="button" onClick={onSignup} className="text-black hover:underline">
+                ${ko.signup}
+              </button>
+            </p>
+          </div>
         )}
       </motion.div>
     </div>
   );
 }
+`;
+
+fs.writeFileSync(target, content, "utf8");
+console.log("Fixed:", target);

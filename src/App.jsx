@@ -8,6 +8,7 @@ import DeviceConnectionInfoPage from "./registerDevice/DeviceConnectionInfoPage"
 
 import Auth from './Auth/Auth';
 import Signup from './Auth/Signup';
+import ForgotPassword from './Auth/ForgotPassword';
 import Weather from './DashBoard/Weather';
 import CctvPage from './CCTV/CctvPage';
 import HistoryPage from "./history/HistoryPage";
@@ -26,7 +27,6 @@ function ProtectedRoute({ children }) {
         if (!active) {
           return;
         }
-
         setStatus(response.ok ? "authenticated" : "unauthenticated");
       })
       .catch(() => {
@@ -65,6 +65,7 @@ function App() {
             <Routes>
               <Route path="/" element={<Auth />} />
               <Route path="/signup" element={<Signup />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route
                 path="/dashboard"
                 element={

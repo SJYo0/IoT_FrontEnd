@@ -1,11 +1,14 @@
 import {
   Bell,
+  CheckCircle2,
   Droplets,
   Flame,
+  Loader2,
   Snowflake,
   Sprout,
   Wind,
   Waves,
+  XCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
@@ -33,14 +36,15 @@ function isSameState(a, b) {
   return DEVICE_CONTROL_KEYS.every((key) => Boolean(a?.[key]) === Boolean(b?.[key]));
 }
 
-function Toggle({ checked, onChange }) {
+function Toggle({ checked, onChange, disabled = false }) {
   return (
     <button
       type="button"
-      onClick={onChange}
+      onClick={disabled ? undefined : onChange}
+      disabled={disabled}
       className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full p-1 transition-colors ${
         checked ? "bg-sky-500" : "bg-slate-200"
-      }`}
+      } ${disabled ? "cursor-not-allowed opacity-70" : ""}`}
       aria-pressed={checked}
     >
       <span
@@ -55,8 +59,10 @@ function Toggle({ checked, onChange }) {
 function EnvControlPage() {
   const [state, setState] = useState(DEFAULT_DEVICE_CONTROL_STATE);
   const [savedState, setSavedState] = useState(DEFAULT_DEVICE_CONTROL_STATE);
+  const [environmentState, setEnvironmentState] = useState(DEFAULT_DEVICE_CONTROL_STATE);
   const [selectedMac, setSelectedMac] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [saveButtonState, setSaveButtonState] = useState("idle");
   const [saveMessage, setSaveMessage] = useState("");
   const [notice, setNotice] = useState(null);
 
@@ -83,21 +89,27 @@ function EnvControlPage() {
         if (active) {
           setState(DEFAULT_DEVICE_CONTROL_STATE);
           setSavedState(DEFAULT_DEVICE_CONTROL_STATE);
+          setEnvironmentState(DEFAULT_DEVICE_CONTROL_STATE);
           setSaveMessage("");
         }
         return;
       }
       try {
-        const loaded = await fetchDeviceControlState("status", selectedMac);
+        const [loadedStatus, loadedEnvironment] = await Promise.all([
+          fetchDeviceControlState("status", selectedMac),
+          fetchDeviceControlState("environment", selectedMac),
+        ]);
         if (active) {
-          setState(loaded);
-          setSavedState(loaded);
+          setState(loadedStatus);
+          setSavedState(loadedStatus);
+          setEnvironmentState(loadedEnvironment);
           setSaveMessage("");
         }
       } catch {
         if (active) {
           setState(DEFAULT_DEVICE_CONTROL_STATE);
           setSavedState(DEFAULT_DEVICE_CONTROL_STATE);
+          setEnvironmentState(DEFAULT_DEVICE_CONTROL_STATE);
           setSaveMessage("환경 설정을 불러오지 못했습니다.");
         }
       }
@@ -110,6 +122,10 @@ function EnvControlPage() {
   }, [selectedMac]);
 
   const toggle = (key) => {
+    if (!environmentState?.[key] && !state?.[key]) {
+      setNotice({ type: "error", text: "환경제어 설정에서 ON 저장한 항목만 켤 수 있습니다." });
+      return;
+    }
     setSaveMessage("");
     setState((prev) => ({ ...prev, [key]: !prev[key] }));
   };
@@ -120,9 +136,17 @@ function EnvControlPage() {
     if (!notice) {
       return undefined;
     }
-    const timer = window.setTimeout(() => setNotice(null), 2500);
+    const timer = window.setTimeout(() => setNotice(null), 4000);
     return () => window.clearTimeout(timer);
   }, [notice]);
+
+  useEffect(() => {
+    if (saveButtonState !== "success") {
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setSaveButtonState("idle"), 2200);
+    return () => window.clearTimeout(timer);
+  }, [saveButtonState]);
 
   const handleSave = async () => {
     if (isSaving) {
@@ -139,15 +163,18 @@ function EnvControlPage() {
       return;
     }
     setIsSaving(true);
+    setSaveButtonState("saving");
     setSaveMessage("");
     try {
       const saved = await saveDeviceControlState("status", selectedMac, state);
       setState(saved);
       setSavedState(saved);
-      setSaveMessage("저장이 완료됐습니다.");
-      setNotice({ type: "success", text: "저장이 완료됐습니다." });
+      setSaveMessage("저장 완료");
+      setSaveButtonState("success");
+      setNotice({ type: "success", text: "저장 완료" });
     } catch {
       setSaveMessage("환경 설정 저장에 실패했습니다.");
+      setSaveButtonState("idle");
       setNotice({ type: "error", text: "저장에 실패했습니다. 잠시 후 다시 시도해주세요." });
     } finally {
       setIsSaving(false);
@@ -198,9 +225,10 @@ function EnvControlPage() {
                 <button
                   type="button"
                   onClick={() => toggle("windowNorth")}
+                  disabled={!environmentState.windowNorth && !state.windowNorth}
                   className={`absolute left-1/2 top-[-16px] z-20 h-8 w-[146px] -translate-x-1/2 rounded-xl border-2 transition ${
                     state.windowNorth ? "border-sky-300 bg-sky-100" : "border-slate-300 bg-slate-200"
-                  }`}
+                  } ${!environmentState.windowNorth ? "cursor-not-allowed opacity-50" : ""}`}
                   title={`북쪽 창문 ${state.windowNorth ? "열림" : "닫힘"}`}
                 />
                 <div
@@ -211,9 +239,10 @@ function EnvControlPage() {
                 <button
                   type="button"
                   onClick={() => toggle("windowWest")}
+                  disabled={!environmentState.windowWest && !state.windowWest}
                   className={`absolute left-[-69px] top-1/2 z-20 h-8 w-[146px] -translate-y-1/2 -rotate-90 rounded-xl border-2 transition ${
                     state.windowWest ? "border-sky-300 bg-sky-100" : "border-slate-300 bg-slate-200"
-                  }`}
+                  } ${!environmentState.windowWest ? "cursor-not-allowed opacity-50" : ""}`}
                   title={`서쪽 창문 ${state.windowWest ? "열림" : "닫힘"}`}
                 />
                 <div
@@ -224,9 +253,10 @@ function EnvControlPage() {
                 <button
                   type="button"
                   onClick={() => toggle("windowEast")}
+                  disabled={!environmentState.windowEast && !state.windowEast}
                   className={`absolute right-[-69px] top-1/2 z-20 h-8 w-[146px] -translate-y-1/2 -rotate-90 rounded-xl border-2 transition ${
                     state.windowEast ? "border-sky-300 bg-sky-100" : "border-slate-300 bg-slate-200"
-                  }`}
+                  } ${!environmentState.windowEast ? "cursor-not-allowed opacity-50" : ""}`}
                   title={`동쪽 창문 ${state.windowEast ? "열림" : "닫힘"}`}
                 />
                 <div
@@ -237,9 +267,10 @@ function EnvControlPage() {
                 <button
                   type="button"
                   onClick={() => toggle("windowSouth")}
+                  disabled={!environmentState.windowSouth && !state.windowSouth}
                   className={`absolute bottom-[-16px] left-1/2 z-20 h-8 w-[146px] -translate-x-1/2 rounded-xl border-2 transition ${
                     state.windowSouth ? "border-cyan-300 bg-cyan-100" : "border-slate-300 bg-slate-200"
-                  }`}
+                  } ${!environmentState.windowSouth ? "cursor-not-allowed opacity-50" : ""}`}
                   title={`남쪽 창문 ${state.windowSouth ? "열림" : "닫힘"}`}
                 />
                 <div
@@ -260,11 +291,12 @@ function EnvControlPage() {
                           key={chip.key}
                           type="button"
                           onClick={() => toggle(chip.key)}
+                          disabled={!environmentState[chip.key] && !state[chip.key]}
                           className={`h-[98px] rounded-xl border px-3 text-center transition ${
                             active
                               ? `border-transparent ${chip.activeClass} text-white shadow`
                               : "border-slate-200 bg-white text-slate-600"
-                          }`}
+                          } ${!environmentState[chip.key] ? "cursor-not-allowed opacity-50" : ""}`}
                         >
                           <ChipIcon className="mx-auto h-6 w-6" />
                           <p className="mt-2 text-[22px] font-bold tracking-[-0.03em]">{chip.label}</p>
@@ -282,11 +314,12 @@ function EnvControlPage() {
                           key={chip.key}
                           type="button"
                           onClick={() => toggle(chip.key)}
+                          disabled={!environmentState[chip.key] && !state[chip.key]}
                           className={`h-[98px] w-[150px] rounded-xl border px-3 text-center transition ${
                             active
                               ? `border-transparent ${chip.activeClass} text-white shadow`
                               : "border-slate-200 bg-white text-slate-600"
-                          }`}
+                          } ${!environmentState[chip.key] ? "cursor-not-allowed opacity-50" : ""}`}
                         >
                           <ChipIcon className="mx-auto h-6 w-6" />
                           <p className="mt-2 text-[22px] font-bold tracking-[-0.03em]">{chip.label}</p>
@@ -314,7 +347,11 @@ function EnvControlPage() {
                       <div className="rounded-2xl border border-slate-200 bg-white px-2 py-2 text-center shadow-sm">
                         <p className="text-[12px] font-semibold text-slate-700">북쪽 창문</p>
                         <div className="mt-1.5 flex justify-center">
-                          <Toggle checked={state.windowNorth} onChange={() => toggle("windowNorth")} />
+                          <Toggle
+                            checked={state.windowNorth}
+                            onChange={() => toggle("windowNorth")}
+                            disabled={!environmentState.windowNorth && !state.windowNorth}
+                          />
                         </div>
                         <p className={`mt-1 text-[12px] font-semibold ${state.windowNorth ? "text-sky-600" : "text-slate-400"}`}>
                           {state.windowNorth ? "열림" : "닫힘"}
@@ -326,7 +363,11 @@ function EnvControlPage() {
                       <div className="rounded-2xl border border-slate-200 bg-white px-2 py-2 text-center shadow-sm">
                         <p className="text-[12px] font-semibold text-slate-700">서쪽 창문</p>
                         <div className="mt-1.5 flex justify-center">
-                          <Toggle checked={state.windowWest} onChange={() => toggle("windowWest")} />
+                          <Toggle
+                            checked={state.windowWest}
+                            onChange={() => toggle("windowWest")}
+                            disabled={!environmentState.windowWest && !state.windowWest}
+                          />
                         </div>
                         <p className={`mt-1 text-[12px] font-semibold ${state.windowWest ? "text-sky-600" : "text-slate-400"}`}>
                           {state.windowWest ? "열림" : "닫힘"}
@@ -338,7 +379,11 @@ function EnvControlPage() {
                       <div className="rounded-2xl border border-slate-200 bg-white px-2 py-2 text-center shadow-sm">
                         <p className="text-[12px] font-semibold text-slate-700">동쪽 창문</p>
                         <div className="mt-1.5 flex justify-center">
-                          <Toggle checked={state.windowEast} onChange={() => toggle("windowEast")} />
+                          <Toggle
+                            checked={state.windowEast}
+                            onChange={() => toggle("windowEast")}
+                            disabled={!environmentState.windowEast && !state.windowEast}
+                          />
                         </div>
                         <p className={`mt-1 text-[12px] font-semibold ${state.windowEast ? "text-sky-600" : "text-slate-400"}`}>
                           {state.windowEast ? "열림" : "닫힘"}
@@ -350,7 +395,11 @@ function EnvControlPage() {
                       <div className="rounded-2xl border border-slate-200 bg-white px-2 py-2 text-center shadow-sm">
                         <p className="text-[12px] font-semibold text-slate-700">남쪽 창문</p>
                         <div className="mt-1.5 flex justify-center">
-                          <Toggle checked={state.windowSouth} onChange={() => toggle("windowSouth")} />
+                          <Toggle
+                            checked={state.windowSouth}
+                            onChange={() => toggle("windowSouth")}
+                            disabled={!environmentState.windowSouth && !state.windowSouth}
+                          />
                         </div>
                         <p className={`mt-1 text-[12px] font-semibold ${state.windowSouth ? "text-sky-600" : "text-slate-400"}`}>
                           {state.windowSouth ? "열림" : "닫힘"}
@@ -380,7 +429,11 @@ function EnvControlPage() {
                           <ItemIcon className="h-4 w-4" />
                           <span className="text-[14px] font-semibold">{item.label}</span>
                         </div>
-                        <Toggle checked={state[item.key]} onChange={() => toggle(item.key)} />
+                        <Toggle
+                          checked={state[item.key]}
+                          onChange={() => toggle(item.key)}
+                          disabled={!environmentState[item.key] && !state[item.key]}
+                        />
                       </div>
                     );
                   })}
@@ -397,20 +450,32 @@ function EnvControlPage() {
                       : "bg-rose-50 text-rose-700"
                   }`}
                 >
-                  {notice.text}
+                  <span className="inline-flex items-center justify-center gap-1.5 animate-[fadeIn_180ms_ease-out]">
+                    {notice.type === "success" ? (
+                      <CheckCircle2 className="h-4 w-4" />
+                    ) : (
+                      <XCircle className="h-4 w-4" />
+                    )}
+                    {notice.text}
+                  </span>
                 </div>
               ) : null}
               <button
                 type="button"
                 onClick={handleSave}
                 disabled={isSaving}
-                className={`w-full rounded-xl px-4 py-3 text-[15px] font-semibold transition ${
-                  isSaving
-                    ? "cursor-not-allowed bg-slate-200 text-slate-400"
-                    : "bg-sky-500 text-white hover:bg-sky-600"
+                className={`w-full rounded-xl bg-sky-500 px-4 py-3 text-[15px] font-semibold text-white transition ${
+                  isSaving ? "cursor-not-allowed opacity-60" : saveButtonState === "success" ? "bg-emerald-500" : "hover:bg-sky-600"
                 }`}
               >
-                {isSaving ? "저장 중..." : "설정 저장하기"}
+                <span className="inline-flex items-center justify-center gap-2">
+                  {saveButtonState === "saving" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {saveButtonState === "saving"
+                    ? "설정 저장하기"
+                    : saveButtonState === "success"
+                      ? "저장 완료"
+                      : "설정 저장하기"}
+                </span>
               </button>
               <p className="mt-2 min-h-[20px] text-center text-[12px] font-medium text-slate-500">
                 {!selectedMac

@@ -4,14 +4,14 @@ export const SELECTED_DEVICE_MAC_KEY = "iot.selectedDeviceMac";
 
 export const DEFAULT_DEVICE_CONTROL_STATE = {
   windowNorth: false,
-  windowSouth: true,
+  windowSouth: false,
   windowEast: false,
   windowWest: false,
   aircon: false,
   heater: false,
-  humidifier: true,
+  humidifier: false,
   dehumidifier: false,
-  airCleaner: true,
+  airCleaner: false,
   sprinkler: false,
   fireAlarm: false,
 };
