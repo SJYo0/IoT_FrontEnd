@@ -40,6 +40,15 @@ function normalizeMac(value) {
   return String(value || "").trim().toUpperCase();
 }
 
+function clearSelectedDeviceStorage() {
+  try {
+    sessionStorage.removeItem(SELECTED_DEVICE_MAC_KEY);
+    localStorage.removeItem(SELECTED_DEVICE_MAC_KEY);
+  } catch {
+    // ignore storage failures
+  }
+}
+
 function TopSidebar() {
   const location = useLocation();
   const hidePaths = ["/", "/signup", "/forgot-password"];
@@ -83,6 +92,12 @@ function TopSidebar() {
   const selectedDevice = sessionDevices[selectedDeviceIdx] || sessionDevices[0] || null;
   const selectedDeviceMac = normalizeMac(selectedDevice?.mac || "");
 
+  useEffect(() => {
+    if (selectedDeviceIdx >= sessionDevices.length) {
+      setSelectedDeviceIdx(0);
+    }
+  }, [selectedDeviceIdx, sessionDevices.length]);
+
   const markAllAlertsReadOnServer = async () => {
     if (!selectedDeviceMac) return;
     try {
@@ -125,8 +140,9 @@ function TopSidebar() {
               }))
               .filter((item) => item.mac || item.ip)
           : [];
-        if (parsedDevices.length > 0) {
-          setSessionDevices(parsedDevices);
+        const onlineDevices = parsedDevices.filter((item) => item.online);
+        if (onlineDevices.length > 0) {
+          setSessionDevices(onlineDevices);
           const savedMac =
             sessionStorage.getItem(SELECTED_DEVICE_MAC_KEY) ||
             localStorage.getItem(SELECTED_DEVICE_MAC_KEY) ||
@@ -134,18 +150,14 @@ function TopSidebar() {
           const defaultIdx = savedMac
             ? Math.max(
                 0,
-                parsedDevices.findIndex((item) => String(item.mac || "").trim() === savedMac),
+                onlineDevices.findIndex((item) => normalizeMac(item.mac) === normalizeMac(savedMac)),
               )
             : 0;
           setSelectedDeviceIdx(defaultIdx);
         } else {
-          const single = {
-            mac: typeof payload?.deviceMac === "string" ? payload.deviceMac : "",
-            ip: typeof payload?.deviceIp === "string" ? payload.deviceIp : "",
-            online: false,
-          };
-          setSessionDevices(single.mac || single.ip ? [single] : []);
+          setSessionDevices([]);
           setSelectedDeviceIdx(0);
+          clearSelectedDeviceStorage();
         }
       } catch {
         if (active) {
@@ -220,6 +232,18 @@ function TopSidebar() {
     if (shouldHide) return;
     const mac = String(selectedDevice?.mac || "").trim();
     const ip = String(selectedDevice?.ip || "").trim();
+
+    // 디바이스 정보가 비어있는 초기/일시 상태에서는 선택 이벤트를 보내지 않는다.
+    // 빈 mac 이벤트가 대시보드 activeMac을 초기화해 AI 분석 영역이 사라질 수 있다.
+    if (!mac && !ip) {
+      clearSelectedDeviceStorage();
+      window.dispatchEvent(
+        new CustomEvent("iot-device-selected", {
+          detail: { mac: "", ip: "" },
+        }),
+      );
+      return;
+    }
 
     if (mac) {
       sessionStorage.setItem(SELECTED_DEVICE_MAC_KEY, mac);
@@ -351,7 +375,9 @@ function TopSidebar() {
                 setDeviceExpanded((prev) => !prev);
                 setAlarmExpanded(false);
               }}
-              className="w-[180px] rounded-[10px] border border-slate-300 bg-white px-2.5 py-1 text-left text-slate-700 hover:bg-slate-50"
+              className={`relative top-[6px] rounded-[10px] border border-slate-300 bg-white px-2.5 text-left text-slate-700 hover:bg-slate-50 ${
+                selectedDevice ? "w-[180px] py-1" : "w-[210px] py-2.5"
+              }`}
               title="연결 디바이스 목록"
             >
               <div className="flex min-w-0 items-center justify-between gap-2">
@@ -365,10 +391,12 @@ function TopSidebar() {
                   />
                   <div className="min-w-0">
                     <p className="truncate text-[12px] font-semibold text-slate-900">
-                      {selectedDevice?.mac?.trim() ? selectedDevice.mac : "연결된 디바이스 없음"}
+                      {selectedDevice?.mac?.trim() || selectedDevice?.ip?.trim()
+                        ? selectedDevice?.mac?.trim() || "-"
+                        : "선택된 기기가 없습니다."}
                     </p>
                     <p className="truncate text-[12px] font-medium text-slate-500">
-                      {selectedDevice?.ip?.trim() ? selectedDevice.ip : "-"}
+                      {selectedDevice?.ip?.trim() ? selectedDevice.ip : ""}
                     </p>
                   </div>
                 </div>
@@ -384,7 +412,7 @@ function TopSidebar() {
                 <div className="max-h-72 overflow-y-auto divide-y divide-slate-200">
                   {sessionDevices.length === 0 && (
                     <div className="px-3 py-6 text-center text-xs text-slate-400">
-                      연결된 디바이스 정보가 없습니다.
+                      선택된 기기가 없습니다.
                     </div>
                   )}
                   {sessionDevices.map((device, idx) => (

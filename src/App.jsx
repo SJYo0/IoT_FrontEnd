@@ -12,6 +12,7 @@ import ForgotPassword from './Auth/ForgotPassword';
 import Weather from './DashBoard/Weather';
 import CctvPage from './CCTV/CctvPage';
 import HistoryPage from "./history/HistoryPage";
+import AiReportPage from "./aiReport/AiReportPage";
 import SettingsPage from "./settings/SettingsPage";
 import EnvControlPage from "./envControl/EnvControlPage";
 import { apiFetch } from "./Auth/api";
@@ -112,6 +113,14 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <HistoryPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/ai-report"
+                element={
+                  <ProtectedRoute>
+                    <AiReportPage />
                   </ProtectedRoute>
                 }
               />

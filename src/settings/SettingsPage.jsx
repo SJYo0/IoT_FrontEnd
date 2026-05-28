@@ -49,7 +49,7 @@ const SECTION_DATA = [
   },
 ];
 
-function ToggleCard({ title, desc, checked, onChange }) {
+function ToggleCard({ title, desc, checked, onChange, disabled = false }) {
   return (
     <div className="flex min-h-[72px] items-center justify-between rounded-2xl border border-indigo-200/70 bg-white px-5 py-4">
       <div className="pr-4">
@@ -58,10 +58,11 @@ function ToggleCard({ title, desc, checked, onChange }) {
       </div>
       <button
         type="button"
-        onClick={onChange}
+        onClick={disabled ? undefined : onChange}
+        disabled={disabled}
         className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full p-1 transition-colors ${
           checked ? "bg-indigo-600" : "bg-slate-200"
-        }`}
+        } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
         aria-pressed={checked}
       >
         <span
@@ -118,6 +119,7 @@ function SettingsPage() {
   }, [selectedMac]);
 
   const toggleItem = (key) => {
+    if (!selectedMac) return;
     setToggles((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
@@ -171,6 +173,7 @@ function SettingsPage() {
                       title={item.title}
                       desc={item.desc}
                       checked={Boolean(toggles[item.key])}
+                      disabled={!selectedMac}
                       onChange={() => toggleItem(item.key)}
                     />
                   ))}
