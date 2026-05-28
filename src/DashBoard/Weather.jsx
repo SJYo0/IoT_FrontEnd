@@ -375,7 +375,7 @@ function Weather() {
     }
   };
 
-  // 💡 [추가] 대시보드 렌더링이 끝난 후 CCTV 연결 시작 (블로킹 방지)
+  // [추가] 대시보드 렌더링이 끝난 후 CCTV 연결 시작 (블로킹 방지)
   useEffect(() => {
     if (data) {
       const timer = setTimeout(() => {
