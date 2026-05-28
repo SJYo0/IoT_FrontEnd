@@ -217,35 +217,15 @@ function CompassRose({ angle, sizeClass = "h-28 w-28" }) {
 }
 
 function normalizeAnalysisStatus(statusValue) {
-  if (!statusValue) return { severity: "", score: null };
-
+  if (!statusValue) return "";
+  if (typeof statusValue === "string") return statusValue;
   if (typeof statusValue === "object") {
-    const severity = statusValue?.severity ? String(statusValue.severity).trim().toUpperCase() : "";
-    const scoreNum = Number(statusValue?.score);
-    const score = Number.isFinite(scoreNum) ? scoreNum : null;
-    return { severity, score };
+    const severity = statusValue?.severity ? String(statusValue.severity) : "";
+    const score = statusValue?.score;
+    if (severity && score != null) return `${severity} (${score})`;
+    if (severity) return severity;
   }
-
-  const text = String(statusValue).trim();
-  const upper = text.toUpperCase();
-  const withScore = upper.match(/^([A-Z_]+)\s*\((\d+)\)$/);
-  if (withScore) {
-    return {
-      severity: withScore[1],
-      score: Number(withScore[2]),
-    };
-  }
-  return { severity: upper, score: null };
-}
-
-function labelFromAnalysisSeverity(severityValue) {
-  const severity = String(severityValue || "").trim().toUpperCase();
-  if (!severity) return "";
-  if (["NORMAL", "GOOD", "SAFE", "LOW", "OK"].includes(severity)) return "좋음";
-  if (["INFO", "NOTICE", "MODERATE", "MEDIUM"].includes(severity)) return "보통";
-  if (["WARNING", "CAUTION", "BAD"].includes(severity)) return "나쁨";
-  if (["CRITICAL", "DANGER", "SEVERE", "VERY_BAD"].includes(severity)) return "매우나쁨";
-  return "";
+  return String(statusValue);
 }
 
 function normalizeAnalysisSummary(summaryValue) {
@@ -497,9 +477,6 @@ function Weather() {
             ...prev,
             [analysisMac]: analysis,
           }));
-          if (!activeMacRef.current) {
-            setActiveMac(analysisMac);
-          }
           if (activeMacRef.current && analysisMac !== activeMacRef.current) {
             return;
           }
@@ -599,11 +576,6 @@ function Weather() {
   }, [navigate, activeMac]);
 
   useEffect(() => {
-    if (activeMac) return;
-    setAlarmByCategory({});
-  }, [activeMac]);
-
-  useEffect(() => {
     const alerts = Object.entries(alarmByCategory);
     if (alerts.length === 0) return;
     alerts.forEach(([category, alert]) => {
@@ -662,13 +634,14 @@ function Weather() {
   const ws = apiNumber(latest.ws);
   const wd = apiNumber(latest.wd);
   const rn = apiNumber(latest.rn);
-  const weatherText = latest.wf || latest.weather || latest.wfKor || "-";
+  const weatherText = latest.wf || latest.weather || latest.wfKor || "정보 없음";
   const windInfo = windDirectionInfo(wd);
 
   const hasScoreInput = ta != null || hm != null || rn != null || ws != null;
-  const estimatedScore = hasScoreInput ? clamp( Math.round( (ta != null ? clamp(((ta + 10) / 50) * 30, 0, 30) : 0) + (hm != null ? clamp((hm / 100) * 25, 0, 25) : 0) + (rn != null ? clamp((1 - Math.min(Math.abs(rn), 20) / 20) * 15, 0, 15) : 0) + (ws != null ? clamp((1 - ws / 15) * 15, 0, 15) : 0) + 15, ), 1, 100, ) : null;
+  const dashboardScore = hasScoreInput ? clamp( Math.round( (ta != null ? clamp(((ta + 10) / 50) * 30, 0, 30) : 0) + (hm != null ? clamp((hm / 100) * 25, 0, 25) : 0) + (rn != null ? clamp((1 - Math.min(Math.abs(rn), 20) / 20) * 15, 0, 15) : 0) + (ws != null ? clamp((1 - ws / 15) * 15, 0, 15) : 0) + 15, ), 1, 100, ) : null;
+  const mainLabel = scoreLabelFromValue(dashboardScore);
 
-  const indoorTelemetry = activeMac ? telemetryByMac[activeMac] ?? null : null;
+  const indoorTelemetry = activeMac ? telemetryByMac[activeMac] ?? null : latestTelemetry;
   const indoorTemp = indoorTelemetry?.temperature ?? null;
   const indoorHum = indoorTelemetry?.humidity ?? null;
   const indoorPressure = indoorTelemetry?.pressure ?? null;
@@ -680,41 +653,11 @@ function Weather() {
   const fireAlarm = alarmByCategory?.FIRE;
   const tvocAlarm = alarmByCategory?.TVOC;
   const eco2Alarm = alarmByCategory?.ECO2;
-  const activeAnalysis = (() => {
-    if (!activeMac) return null;
-    if (activeMac && analysisByMac[activeMac]) {
-      return analysisByMac[activeMac];
-    }
-    const analyses = Object.values(analysisByMac);
-    if (analyses.length === 0) return null;
-    return analyses.reduce((latest, current) => {
-      if (!latest) return current;
-      const latestTs = Number(latest?.timestamp || 0);
-      const currentTs = Number(current?.timestamp || 0);
-      return currentTs > latestTs ? current : latest;
-    }, null);
-  })();
-  const aiScoreRaw = activeAnalysis?.status?.score;
-  const aiScore = Number.isFinite(Number(aiScoreRaw)) ? clamp(Math.round(Number(aiScoreRaw)), 1, 100) : null;
-  const aiSeverityLabel = labelFromAnalysisSeverity(activeAnalysis?.status?.severity);
-  const dashboardScore = aiScore != null ? aiScore : estimatedScore;
-  const mainLabel = activeMac ? aiSeverityLabel || scoreLabelFromValue(dashboardScore) : "-";
+  const activeAnalysis = activeMac ? analysisByMac[activeMac] ?? null : null;
   const analysisView = parseAnalysisSections(activeAnalysis?.summary ?? "");
-  const overviewLines = !activeMac
-    ? ["선택된 기기가 없습니다."]
-    : activeAnalysis
-      ? analysisView.overviewLines
-      : ["분석 결과 수신 전입니다."];
-  const controlLines = !activeMac
-    ? ["선택된 기기가 없습니다."]
-    : activeAnalysis
-      ? analysisView.controlLines
-      : ["AI 제어 분석 대기 중입니다."];
-  const guideLines = !activeMac
-    ? ["선택된 기기가 없습니다."]
-    : activeAnalysis
-      ? analysisView.guideLines
-      : ["권장 행동 지침 대기 중입니다."];
+  const overviewLines = activeAnalysis ? analysisView.overviewLines : ["분석 결과 수신 전입니다."];
+  const controlLines = activeAnalysis ? analysisView.controlLines : ["AI 제어 분석 대기 중입니다."];
+  const guideLines = activeAnalysis ? analysisView.guideLines : ["권장 행동 지침 대기 중입니다."];
 
   const metrics = [
     {
@@ -778,10 +721,10 @@ function Weather() {
   ];
 
   const statusItems = [
-    { label: "좋음", icon: Smile, active: mainLabel === "좋음" },
-    { label: "보통", icon: Meh, active: mainLabel === "보통" },
-    { label: "나쁨", icon: Frown, active: mainLabel === "나쁨" },
-    { label: "매우나쁨", icon: AlertTriangle, active: mainLabel === "매우나쁨" },
+    { label: "좋음", icon: Smile, active: dashboardScore != null && mainLabel === "좋음" },
+    { label: "보통", icon: Meh, active: dashboardScore != null && mainLabel === "보통" },
+    { label: "나쁨", icon: Frown, active: dashboardScore != null && mainLabel === "나쁨" },
+    { label: "매우나쁨", icon: AlertTriangle, active: dashboardScore != null && mainLabel === "매우나쁨" },
   ];
 
   const isAnyCritical = Object.values(alarmByCategory).some(a => a.severity === "CRITICAL");
@@ -814,7 +757,7 @@ function Weather() {
             <div className="text-center px-2">
               <p className="text-xs font-semibold text-slate-700">점수</p>
               <p className="mt-1 text-5xl font-extrabold leading-none text-slate-900">
-                {!activeMac || dashboardScore == null ? "-" : dashboardScore}
+                {dashboardScore == null ? "-" : dashboardScore}
               </p>
               <p className="mt-2 text-2xl font-bold text-slate-800">{mainLabel}</p>
             </div>
@@ -871,13 +814,15 @@ function Weather() {
             </div>
             <div className="mt-2 flex items-center gap-3">
               <div className="grid min-h-[132px] w-full grid-cols-2 grid-rows-[auto_auto] rounded-xl border border-slate-200 bg-slate-100/40">
-                <div className="flex items-start justify-start gap-3 px-3 py-3">
+                <div className="flex items-start justify-start gap-3 px-3 py-2">
                   <div className="mt-3 flex items-center justify-center rounded-lg bg-slate-100/80 p-1.5">
                     <CloudSun className="h-12 w-12 shrink-0 text-slate-500" strokeWidth={1.5} />
                   </div>
-                  <div className="min-w-0 flex-1 rounded-lg bg-white/80 px-2.5 py-2.5 text-slate-700">
-                    <p className="mt-0.5 text-lg font-extrabold leading-none">{ta == null ? "-" : `${ta}°C`}</p>
-                    <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[11px]">
+                  <div className="min-w-0 flex-1 rounded-lg bg-white/80 px-2.5 py-1.5 text-slate-700">
+                    <p className="text-lg font-extrabold leading-none">{ta == null ? "-" : `${ta}°C`}</p>
+                    <div className="mt-1 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[11px]">
+                      <p className="font-semibold text-slate-500">날씨</p>
+                      <p className="truncate font-semibold">{weatherText}</p>
                       <p className="font-semibold text-slate-500">습도</p>
                       <p className="font-semibold">{hm == null ? "-" : `${hm}%`}</p>
                       <p className="font-semibold text-slate-500">강수</p>
@@ -896,7 +841,6 @@ function Weather() {
                         <p className="text-[11px] font-semibold text-slate-500">풍향</p>
                         <p className="text-sm font-extrabold text-slate-800">{windInfo.label}</p>
                         <p className="text-[11px] text-slate-500">{wd == null ? "-" : `${wd}° (${windInfo.short})`}</p>
-                        <p className="mt-0.5 text-[11px] text-slate-500">풍속 {ws == null ? "-" : `${ws} m/s`}</p>
                       </div>
                     </div>
                   </div>

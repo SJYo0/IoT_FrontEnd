@@ -11,7 +11,6 @@ import {
   XCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import Paho from "paho-mqtt";
 import {
   DEFAULT_DEVICE_CONTROL_STATE,
   fetchDeviceControlState,
@@ -32,8 +31,6 @@ const DEVICE_CONTROL_KEYS = [
   "sprinkler",
   "fireAlarm",
 ];
-
-const normalizeMac = (value) => String(value || "").trim().toUpperCase();
 
 function isSameState(a, b) {
   return DEVICE_CONTROL_KEYS.every((key) => Boolean(a?.[key]) === Boolean(b?.[key]));
@@ -71,7 +68,7 @@ function EnvControlPage() {
 
   useEffect(() => {
     const applySelectedMac = (mac) => {
-      const normalized = normalizeMac(mac);
+      const normalized = String(mac || "").trim();
       setSelectedMac(normalized);
     };
 
@@ -124,67 +121,7 @@ function EnvControlPage() {
     };
   }, [selectedMac]);
 
-  useEffect(() => {
-    if (!selectedMac) return undefined;
-
-    const brokerHost = import.meta.env.VITE_MQTT_BROKER;
-    if (!brokerHost) return undefined;
-
-    const brokerPort = 9001;
-    const clientId = `env_control_${Math.random().toString(16).slice(2, 10)}`;
-    const topic = `webbackend/control/${selectedMac}`;
-    const client = new Paho.Client(brokerHost, brokerPort, clientId);
-
-    client.onMessageArrived = (message) => {
-      try {
-        const topicParts = String(message.destinationName || "").split("/");
-        const macFromTopic = normalizeMac(topicParts[2] || "");
-        if (macFromTopic !== selectedMac) return;
-
-        const payload = JSON.parse(message.payloadString || "{}");
-        const patch = {};
-        if (payload.north_window != null) patch.windowNorth = Boolean(payload.north_window);
-        if (payload.south_window != null) patch.windowSouth = Boolean(payload.south_window);
-        if (payload.east_window != null) patch.windowEast = Boolean(payload.east_window);
-        if (payload.west_window != null) patch.windowWest = Boolean(payload.west_window);
-        if (payload.air_conditioner != null) patch.aircon = Boolean(payload.air_conditioner);
-        if (payload.heating != null) patch.heater = Boolean(payload.heating);
-        if (payload.humidifier != null) patch.humidifier = Boolean(payload.humidifier);
-        if (payload.dehumidifier != null) patch.dehumidifier = Boolean(payload.dehumidifier);
-        if (payload.air_cleaner != null) patch.airCleaner = Boolean(payload.air_cleaner);
-        if (payload.sprinkler != null) patch.sprinkler = Boolean(payload.sprinkler);
-        if (payload.fire_alarm != null) patch.fireAlarm = Boolean(payload.fire_alarm);
-
-        if (Object.keys(patch).length === 0) return;
-
-        setState((prev) => ({ ...prev, ...patch }));
-        setSavedState((prev) => ({ ...prev, ...patch }));
-      } catch (e) {
-        console.error("환경제어 MQTT 파싱 에러:", e);
-      }
-    };
-
-    client.connect({
-      timeout: 3,
-      useSSL: window.location.protocol === "https:",
-      onSuccess: () => {
-        client.subscribe(topic);
-      },
-      onFailure: (err) => {
-        console.error("환경제어 MQTT 연결 실패:", err?.errorMessage || err);
-      },
-    });
-
-    return () => {
-      if (client.isConnected()) client.disconnect();
-    };
-  }, [selectedMac]);
-
   const toggle = (key) => {
-    if (!selectedMac) {
-      setNotice({ type: "error", text: "선택된 기기가 없습니다." });
-      return;
-    }
     if (!environmentState?.[key] && !state?.[key]) {
       setNotice({ type: "error", text: "환경제어 설정에서 ON 저장한 항목만 켤 수 있습니다." });
       return;
@@ -288,7 +225,7 @@ function EnvControlPage() {
                 <button
                   type="button"
                   onClick={() => toggle("windowNorth")}
-                          disabled={!selectedMac || (!environmentState.windowNorth && !state.windowNorth)}
+                  disabled={!environmentState.windowNorth && !state.windowNorth}
                   className={`absolute left-1/2 top-[-16px] z-20 h-8 w-[146px] -translate-x-1/2 rounded-xl border-2 transition ${
                     state.windowNorth ? "border-sky-300 bg-sky-100" : "border-slate-300 bg-slate-200"
                   } ${!environmentState.windowNorth ? "cursor-not-allowed opacity-50" : ""}`}
@@ -302,7 +239,7 @@ function EnvControlPage() {
                 <button
                   type="button"
                   onClick={() => toggle("windowWest")}
-                          disabled={!selectedMac || (!environmentState.windowWest && !state.windowWest)}
+                  disabled={!environmentState.windowWest && !state.windowWest}
                   className={`absolute left-[-69px] top-1/2 z-20 h-8 w-[146px] -translate-y-1/2 -rotate-90 rounded-xl border-2 transition ${
                     state.windowWest ? "border-sky-300 bg-sky-100" : "border-slate-300 bg-slate-200"
                   } ${!environmentState.windowWest ? "cursor-not-allowed opacity-50" : ""}`}
@@ -316,7 +253,7 @@ function EnvControlPage() {
                 <button
                   type="button"
                   onClick={() => toggle("windowEast")}
-                          disabled={!selectedMac || (!environmentState.windowEast && !state.windowEast)}
+                  disabled={!environmentState.windowEast && !state.windowEast}
                   className={`absolute right-[-69px] top-1/2 z-20 h-8 w-[146px] -translate-y-1/2 -rotate-90 rounded-xl border-2 transition ${
                     state.windowEast ? "border-sky-300 bg-sky-100" : "border-slate-300 bg-slate-200"
                   } ${!environmentState.windowEast ? "cursor-not-allowed opacity-50" : ""}`}
@@ -330,7 +267,7 @@ function EnvControlPage() {
                 <button
                   type="button"
                   onClick={() => toggle("windowSouth")}
-                          disabled={!selectedMac || (!environmentState.windowSouth && !state.windowSouth)}
+                  disabled={!environmentState.windowSouth && !state.windowSouth}
                   className={`absolute bottom-[-16px] left-1/2 z-20 h-8 w-[146px] -translate-x-1/2 rounded-xl border-2 transition ${
                     state.windowSouth ? "border-cyan-300 bg-cyan-100" : "border-slate-300 bg-slate-200"
                   } ${!environmentState.windowSouth ? "cursor-not-allowed opacity-50" : ""}`}
@@ -354,7 +291,7 @@ function EnvControlPage() {
                           key={chip.key}
                           type="button"
                           onClick={() => toggle(chip.key)}
-                          disabled={!selectedMac || (!environmentState[chip.key] && !state[chip.key])}
+                          disabled={!environmentState[chip.key] && !state[chip.key]}
                           className={`h-[98px] rounded-xl border px-3 text-center transition ${
                             active
                               ? `border-transparent ${chip.activeClass} text-white shadow`
@@ -377,7 +314,7 @@ function EnvControlPage() {
                           key={chip.key}
                           type="button"
                           onClick={() => toggle(chip.key)}
-                          disabled={!selectedMac || (!environmentState[chip.key] && !state[chip.key])}
+                          disabled={!environmentState[chip.key] && !state[chip.key]}
                           className={`h-[98px] w-[150px] rounded-xl border px-3 text-center transition ${
                             active
                               ? `border-transparent ${chip.activeClass} text-white shadow`
@@ -413,7 +350,7 @@ function EnvControlPage() {
                           <Toggle
                             checked={state.windowNorth}
                             onChange={() => toggle("windowNorth")}
-                            disabled={!selectedMac || (!environmentState.windowNorth && !state.windowNorth)}
+                            disabled={!environmentState.windowNorth && !state.windowNorth}
                           />
                         </div>
                         <p className={`mt-1 text-[12px] font-semibold ${state.windowNorth ? "text-sky-600" : "text-slate-400"}`}>
@@ -429,7 +366,7 @@ function EnvControlPage() {
                           <Toggle
                             checked={state.windowWest}
                             onChange={() => toggle("windowWest")}
-                            disabled={!selectedMac || (!environmentState.windowWest && !state.windowWest)}
+                            disabled={!environmentState.windowWest && !state.windowWest}
                           />
                         </div>
                         <p className={`mt-1 text-[12px] font-semibold ${state.windowWest ? "text-sky-600" : "text-slate-400"}`}>
@@ -445,7 +382,7 @@ function EnvControlPage() {
                           <Toggle
                             checked={state.windowEast}
                             onChange={() => toggle("windowEast")}
-                            disabled={!selectedMac || (!environmentState.windowEast && !state.windowEast)}
+                            disabled={!environmentState.windowEast && !state.windowEast}
                           />
                         </div>
                         <p className={`mt-1 text-[12px] font-semibold ${state.windowEast ? "text-sky-600" : "text-slate-400"}`}>
@@ -461,7 +398,7 @@ function EnvControlPage() {
                           <Toggle
                             checked={state.windowSouth}
                             onChange={() => toggle("windowSouth")}
-                            disabled={!selectedMac || (!environmentState.windowSouth && !state.windowSouth)}
+                            disabled={!environmentState.windowSouth && !state.windowSouth}
                           />
                         </div>
                         <p className={`mt-1 text-[12px] font-semibold ${state.windowSouth ? "text-sky-600" : "text-slate-400"}`}>
@@ -495,7 +432,7 @@ function EnvControlPage() {
                         <Toggle
                           checked={state[item.key]}
                           onChange={() => toggle(item.key)}
-                          disabled={!selectedMac || (!environmentState[item.key] && !state[item.key])}
+                          disabled={!environmentState[item.key] && !state[item.key]}
                         />
                       </div>
                     );
@@ -526,7 +463,7 @@ function EnvControlPage() {
               <button
                 type="button"
                 onClick={handleSave}
-                disabled={!selectedMac || isSaving}
+                disabled={isSaving}
                 className={`w-full rounded-xl bg-sky-500 px-4 py-3 text-[15px] font-semibold text-white transition ${
                   isSaving ? "cursor-not-allowed opacity-60" : saveButtonState === "success" ? "bg-emerald-500" : "hover:bg-sky-600"
                 }`}
