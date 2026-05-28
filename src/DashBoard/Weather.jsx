@@ -317,7 +317,7 @@ function Weather() {
 
   const navigate = useNavigate();
   
-  // 💡 CCTV 전체화면을 위한 ref 생성
+  // 💡 CCTV 전체화면을 위한 ref 생성   
   const cctvContainerRef = useRef(null);
 
   const MEDIAMTX_IP = import.meta.env.VITE_MEDIAMTX_IP;
