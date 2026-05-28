@@ -2,7 +2,9 @@ package com.iot_sw.iot_web_backend.AiService.controller;
 
 import com.iot_sw.iot_web_backend.AiService.dto.request.AnalysisRequestDto;
 import com.iot_sw.iot_web_backend.AiService.entity.AiAnalysis;
+import com.iot_sw.iot_web_backend.AiService.entity.AiReport;
 import com.iot_sw.iot_web_backend.AiService.repository.AiAnalysisRepository;
+import com.iot_sw.iot_web_backend.AiService.repository.AiReportRepository;
 import com.iot_sw.iot_web_backend.AiService.service.AnalysisService;
 import com.iot_sw.iot_web_backend.dashboard.entity.WeatherData;
 import com.iot_sw.iot_web_backend.dashboard.repository.WeatherRepository;
@@ -16,6 +18,7 @@ import com.iot_sw.iot_web_backend.setting.repository.EnvironmentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -23,6 +26,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -35,6 +39,7 @@ import java.util.Optional;
 public class AnalysisController {
     private final AnalysisService analysisService;
     private final AiAnalysisRepository aiAnalysisRepository;
+    private final AiReportRepository aiReportRepository;
     private final DeviceRepository deviceRepository;
     private final SensorRepository sensorRepository;
     private final WeatherRepository weatherRepository;
@@ -57,6 +62,49 @@ public class AnalysisController {
         response.put("status", analysis.getAnalysis().get("status"));
         response.put("summary", analysis.getAnalysis().get("summary"));
         response.put("createdAt", analysis.getCreatedAt());
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/report/latest")
+    public ResponseEntity<Map<String, Object>> latestReport(@RequestParam(required = false) String mac) {
+        Optional<AiReport> latest = (mac != null && !mac.isBlank())
+                ? aiReportRepository.findTopByDevice_MacIdOrderByCreatedAtDesc(mac.trim())
+                : aiReportRepository.findTopByOrderByCreatedAtDesc();
+
+        if (latest.isEmpty()) {
+            return ResponseEntity.noContent().build();
+        }
+
+        AiReport report = latest.get();
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("macAddress", report.getDevice().getMacId());
+        response.put("result", report.getResult());
+        response.put("createdAt", report.getCreatedAt());
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/report/daily")
+    public ResponseEntity<Map<String, Object>> dailyReport(
+            @RequestParam(required = false) String mac,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date
+    ) {
+        LocalDateTime start = date.atStartOfDay();
+        LocalDateTime end = date.plusDays(1).atStartOfDay();
+
+        Optional<AiReport> daily = (mac != null && !mac.isBlank())
+                ? aiReportRepository.findTopByDevice_MacIdAndCreatedAtBetweenOrderByCreatedAtDesc(mac.trim(), start, end)
+                : aiReportRepository.findTopByCreatedAtBetweenOrderByCreatedAtDesc(start, end);
+
+        if (daily.isEmpty()) {
+            return ResponseEntity.noContent().build();
+        }
+
+        AiReport report = daily.get();
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("macAddress", report.getDevice().getMacId());
+        response.put("result", report.getResult());
+        response.put("createdAt", report.getCreatedAt());
+        response.put("reportDate", date.toString());
         return ResponseEntity.ok(response);
     }
 
@@ -105,15 +153,30 @@ public class AnalysisController {
             Environment env,
             ControlStatus control
     ) {
+        boolean tempRelatedEnabled =
+                isEnabled(control.getAirConditioner()) ||
+                isEnabled(control.getHeating()) ||
+                isEnabled(control.getNorthWindow()) ||
+                isEnabled(control.getSouthWindow()) ||
+                isEnabled(control.getEastWindow()) ||
+                isEnabled(control.getWestWindow());
+        boolean humidityRelatedEnabled =
+                isEnabled(control.getHumidifier()) ||
+                isEnabled(control.getDehumidifier());
+        boolean airQualityRelatedEnabled = isEnabled(control.getAirCleaner());
+        boolean fireRelatedEnabled =
+                isEnabled(control.getFireAlarm()) ||
+                isEnabled(control.getSprinkler());
+
         return AnalysisRequestDto.builder()
                 .macAddress(mac)
                 .indoor(AnalysisRequestDto.Indoor.builder()
-                        .temperature(toDouble(sensor.getTemperature()))
-                        .humidity(toDouble(sensor.getHumidity()))
-                        .pressure(toDouble(sensor.getPressure()))
-                        .tvoc(sensor.getTvoc())
-                        .eco2(sensor.getEco2())
-                        .flame(sensor.getFlameValue())
+                        .temperature(tempRelatedEnabled ? toDouble(sensor.getTemperature()) : null)
+                        .humidity(humidityRelatedEnabled ? toDouble(sensor.getHumidity()) : null)
+                        .pressure(tempRelatedEnabled ? toDouble(sensor.getPressure()) : null)
+                        .tvoc(airQualityRelatedEnabled ? sensor.getTvoc() : null)
+                        .eco2(airQualityRelatedEnabled ? sensor.getEco2() : null)
+                        .flame(fireRelatedEnabled ? sensor.getFlameValue() : null)
                         .build())
                 .outdoor(AnalysisRequestDto.Outdoor.builder()
                         .ta(weather != null ? weather.getTempTa() : null)
@@ -159,6 +222,10 @@ public class AnalysisController {
 
     private Double toDouble(BigDecimal value) {
         return value == null ? null : value.doubleValue();
+    }
+
+    private boolean isEnabled(Boolean value) {
+        return Boolean.TRUE.equals(value);
     }
 
     private Map<String, Object> messageBody(String message) {

@@ -2,19 +2,26 @@ package com.iot_sw.iot_web_backend.setting.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.iot_sw.iot_web_backend.Auth.entity.User;
+import com.iot_sw.iot_web_backend.Auth.repository.UserRepository;
 import com.iot_sw.iot_web_backend.device.entity.Device;
 import com.iot_sw.iot_web_backend.device.entity.ApproveLog;
 import com.iot_sw.iot_web_backend.device.repository.ApproveLogRepository;
 import com.iot_sw.iot_web_backend.device.repository.DeviceRepository;
 import com.iot_sw.iot_web_backend.mqtt.MqttGateway;
 import com.iot_sw.iot_web_backend.setting.dto.DeviceControlStateDto;
+import com.iot_sw.iot_web_backend.setting.entity.ControlLog;
 import com.iot_sw.iot_web_backend.setting.entity.ControlStatus;
 import com.iot_sw.iot_web_backend.setting.entity.Environment;
+import com.iot_sw.iot_web_backend.setting.repository.ControlLogRepository;
 import com.iot_sw.iot_web_backend.setting.repository.ControlStatusRepository;
 import com.iot_sw.iot_web_backend.setting.repository.EnvironmentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -25,8 +32,10 @@ public class DeviceControlService {
 
     private final DeviceRepository deviceRepository;
     private final ApproveLogRepository approveLogRepository;
+    private final UserRepository userRepository;
     private final EnvironmentRepository environmentRepository;
     private final ControlStatusRepository controlStatusRepository;
+    private final ControlLogRepository controlLogRepository;
 
     @Transactional(readOnly = true)
     public DeviceControlStateDto getEnvironmentState(String username, String mac) {
@@ -57,14 +66,31 @@ public class DeviceControlService {
     @Transactional
     public DeviceControlStateDto saveControlStatusState(String username, String mac, DeviceControlStateDto dto) {
         Device device = findApprovedDeviceForUser(username, mac);
+        User controlledBy = userRepository.findByUsername(username).orElse(null);
         ControlStatus status = controlStatusRepository.findByDeviceId(device.getId())
                 .orElseGet(() -> ControlStatus.builder().device(device).build());
+        Map<String, Object> previousStatus = objectMapper.convertValue(status, Map.class);
         applyToControlStatus(status, dto);
         controlStatusRepository.save(status);
 
         String mqttPayload = createMqttPayload(dto);
 
         if (!"{}".equals(mqttPayload)) {
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> newStatus = objectMapper.readValue(mqttPayload, Map.class);
+                controlLogRepository.save(
+                        ControlLog.builder()
+                                .device(device)
+                                .controlledBy(controlledBy)
+                                .previousStatus(previousStatus)
+                                .newStatus(newStatus)
+                                .createdAt(LocalDateTime.now())
+                                .build()
+                );
+            } catch (Exception e) {
+                throw new IllegalStateException("수동 제어 로그 저장 중 오류가 발생했습니다.", e);
+            }
             // DB에 저장된 정확한 대문자 MAC 주소를 사용하여 토픽 생성
             String controlTopic = "webbackend/control/" + device.getMacId();
             mqttGateway.sendToMqtt(mqttPayload, controlTopic);
