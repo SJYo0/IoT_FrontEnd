@@ -9,6 +9,28 @@ import Paho from "paho-mqtt";
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 const normalizeMac = (value) => String(value || "").trim().toUpperCase();
+// 💡 [변경] activeMac 기준 조회를 안정화하기 위해 콜론이 있는/없는 MAC 주소를 같은 기기로 취급합니다.
+const compactMac = (value) => normalizeMac(value).replace(/:/g, "");
+
+function macAliases(...values) {
+  const aliases = new Set();
+  values.forEach((value) => {
+    const normalized = normalizeMac(value);
+    if (!normalized) return;
+    aliases.add(normalized);
+    aliases.add(compactMac(normalized));
+  });
+  return Array.from(aliases).filter(Boolean);
+}
+
+function getMacScopedValue(map, mac) {
+  const compactTarget = compactMac(mac);
+  for (const alias of macAliases(mac)) {
+    if (map?.[alias]) return map[alias];
+  }
+  if (!compactTarget) return null;
+  return Object.entries(map || {}).find(([key]) => compactMac(key) === compactTarget)?.[1] ?? null;
+}
 
 function apiNumber(value) {
   if (value == null || value === "") return null;
@@ -346,16 +368,21 @@ function Weather() {
       }
       const payload = await response.json();
       const targetMac = normalizeMac(payload?.macAddress || mac || "");
-      if (!targetMac) return;
+      const analysisKeys = macAliases(targetMac, mac);
+      if (analysisKeys.length === 0) return;
       const analysis = {
         status: normalizeAnalysisStatus(payload?.status),
         summary: normalizeAnalysisSummary(payload?.summary),
         timestamp: payload?.createdAt ? new Date(payload.createdAt).getTime() : Date.now(),
       };
-      setAnalysisByMac((prev) => ({
-        ...prev,
-        [targetMac]: analysis,
-      }));
+      // 💡 [변경] 선택 MAC과 응답 MAC을 모두 키로 저장해 activeMac 변경 시 해당 기기 분석만 조회되게 합니다.
+      setAnalysisByMac((prev) => {
+        const next = { ...prev };
+        analysisKeys.forEach((key) => {
+          next[key] = analysis;
+        });
+        return next;
+      });
     },
     [],
   );
@@ -395,15 +422,17 @@ function Weather() {
     }
   };
 
-  // 💡 [추가] 대시보드 렌더링이 끝난 후 CCTV 연결 시작 (블로킹 방지)
+  // 💡 [변경] activeMac 기반으로 MediaMTX CCTV 스트림 주소를 갱신합니다.
   useEffect(() => {
     if (data) {
       const timer = setTimeout(() => {
-        setCctvSrc(`http://${MEDIAMTX_IP}:8889/cam`);
+        // 💡 [변경] 예: B8:27:EB:AA:11:22 -> B827EBAA1122, 선택 기기가 없으면 기존 기본 스트림 cam 사용
+        const cameraStreamName = activeMac ? compactMac(activeMac) : "cam";
+        setCctvSrc(`http://${MEDIAMTX_IP}:8889/${cameraStreamName}`);
       }, 500); // 0.5초 뒤에 렌더링
       return () => clearTimeout(timer);
     }
-  }, [data, MEDIAMTX_IP]);
+  }, [data, MEDIAMTX_IP, activeMac]);
 
   useEffect(() => {
     activeMacRef.current = activeMac;
@@ -428,8 +457,25 @@ function Weather() {
   }, []);
 
   useEffect(() => {
-    if (!activeMac) return;
-    fetchLatestAnalysis(activeMac).catch(() => {});
+    if (!activeMac) {
+      setAnalysisLoading(false);
+      return undefined;
+    }
+
+    // 💡 [변경] activeMac이 바뀔 때마다 해당 MAC의 실내환경점수/AI 분석 내용을 새로 조회합니다.
+    let cancelled = false;
+    setAnalysisLoading(true);
+    fetchLatestAnalysis(activeMac)
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled && activeMacRef.current === activeMac) {
+          setAnalysisLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [activeMac, fetchLatestAnalysis]);
 
 
@@ -493,10 +539,14 @@ function Weather() {
             summary: normalizeAnalysisSummary(payload?.summary),
             timestamp: Date.now(),
           };
-          setAnalysisByMac((prev) => ({
-            ...prev,
-            [analysisMac]: analysis,
-          }));
+          // 💡 [변경] MQTT 분석 결과도 MAC alias별로 저장해 선택 기기별 화면 갱신에 사용합니다.
+          setAnalysisByMac((prev) => {
+            const next = { ...prev };
+            macAliases(analysisMac).forEach((key) => {
+              next[key] = analysis;
+            });
+            return next;
+          });
           if (!activeMacRef.current) {
             setActiveMac(analysisMac);
           }
@@ -665,9 +715,6 @@ function Weather() {
   const weatherText = latest.wf || latest.weather || latest.wfKor || "-";
   const windInfo = windDirectionInfo(wd);
 
-  const hasScoreInput = ta != null || hm != null || rn != null || ws != null;
-  const estimatedScore = hasScoreInput ? clamp( Math.round( (ta != null ? clamp(((ta + 10) / 50) * 30, 0, 30) : 0) + (hm != null ? clamp((hm / 100) * 25, 0, 25) : 0) + (rn != null ? clamp((1 - Math.min(Math.abs(rn), 20) / 20) * 15, 0, 15) : 0) + (ws != null ? clamp((1 - ws / 15) * 15, 0, 15) : 0) + 15, ), 1, 100, ) : null;
-
   const indoorTelemetry = activeMac ? telemetryByMac[activeMac] ?? null : null;
   const indoorTemp = indoorTelemetry?.temperature ?? null;
   const indoorHum = indoorTelemetry?.humidity ?? null;
@@ -680,38 +727,34 @@ function Weather() {
   const fireAlarm = alarmByCategory?.FIRE;
   const tvocAlarm = alarmByCategory?.TVOC;
   const eco2Alarm = alarmByCategory?.ECO2;
-  const activeAnalysis = (() => {
-    if (!activeMac) return null;
-    if (activeMac && analysisByMac[activeMac]) {
-      return analysisByMac[activeMac];
-    }
-    const analyses = Object.values(analysisByMac);
-    if (analyses.length === 0) return null;
-    return analyses.reduce((latest, current) => {
-      if (!latest) return current;
-      const latestTs = Number(latest?.timestamp || 0);
-      const currentTs = Number(current?.timestamp || 0);
-      return currentTs > latestTs ? current : latest;
-    }, null);
-  })();
+  // 💡 [변경] 다른 기기의 최신 분석으로 fallback하지 않고, activeMac에 해당하는 분석만 표시합니다.
+  const activeAnalysis = activeMac ? getMacScopedValue(analysisByMac, activeMac) : null;
+  const isActiveAnalysisLoading = Boolean(activeMac && analysisLoading && !activeAnalysis);
   const aiScoreRaw = activeAnalysis?.status?.score;
   const aiScore = Number.isFinite(Number(aiScoreRaw)) ? clamp(Math.round(Number(aiScoreRaw)), 1, 100) : null;
   const aiSeverityLabel = labelFromAnalysisSeverity(activeAnalysis?.status?.severity);
-  const dashboardScore = aiScore != null ? aiScore : estimatedScore;
+  // 💡 [변경] 실내환경점수도 activeMac의 AI 분석 점수만 사용합니다.
+  const dashboardScore = activeMac ? aiScore : null;
   const mainLabel = activeMac ? aiSeverityLabel || scoreLabelFromValue(dashboardScore) : "-";
   const analysisView = parseAnalysisSections(activeAnalysis?.summary ?? "");
   const overviewLines = !activeMac
     ? ["선택된 기기가 없습니다."]
+    : isActiveAnalysisLoading
+      ? ["선택한 기기의 분석 결과를 불러오는 중입니다."]
     : activeAnalysis
       ? analysisView.overviewLines
       : ["분석 결과 수신 전입니다."];
   const controlLines = !activeMac
     ? ["선택된 기기가 없습니다."]
+    : isActiveAnalysisLoading
+      ? ["선택한 기기의 AI 제어 결과를 불러오는 중입니다."]
     : activeAnalysis
       ? analysisView.controlLines
       : ["AI 제어 분석 대기 중입니다."];
   const guideLines = !activeMac
     ? ["선택된 기기가 없습니다."]
+    : isActiveAnalysisLoading
+      ? ["선택한 기기의 권장 행동 지침을 불러오는 중입니다."]
     : activeAnalysis
       ? analysisView.guideLines
       : ["권장 행동 지침 대기 중입니다."];
