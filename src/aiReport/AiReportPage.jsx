@@ -12,6 +12,14 @@ const APPLIANCES = [
   { key: "air_cleaner", label: "공기청정기" },
 ];
 
+const APPLIANCE_CARD_STYLES = {
+  air_conditioner: { bg: "#B9E994", title: "#2E7D32", runtime: "#ECFDF5" },
+  heating: { bg: "#F1BF6E", title: "#A16207", runtime: "#FFFBEB" },
+  humidifier: { bg: "#A6E7BB", title: "#15803D", runtime: "#ECFDF5" },
+  dehumidifier: { bg: "#E6D37D", title: "#A16207", runtime: "#ECFDF5" },
+  air_cleaner: { bg: "#EBD884", title: "#92400E", runtime: "#ECFDF5" },
+};
+
 function toText(value) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -19,12 +27,6 @@ function toText(value) {
 function toNumber(value, fallback = 0) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
-}
-
-function formatKoreanDate(date) {
-  const d = date instanceof Date ? date : new Date(date);
-  const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
-  return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 (${weekdays[d.getDay()]})`;
 }
 
 function toDateInputValue(date) {
@@ -109,7 +111,6 @@ function AiReportPage() {
     };
   }, [selectedMac, selectedDate, navigate]);
 
-  const reportDate = selectedDate || (reportCreatedAt ? toDateInputValue(new Date(reportCreatedAt)) : toDateInputValue(new Date()));
   const totalReport = toText(report?.total_report);
   const alarmNotes = Array.isArray(report?.alarm_key_notes) ? report.alarm_key_notes : [];
   const controlNotes = report?.control_key_notes && typeof report.control_key_notes === "object" ? report.control_key_notes : {};
@@ -147,7 +148,6 @@ function AiReportPage() {
               onChange={(e) => setSelectedDate(e.target.value)}
               className="rounded-md border border-[#d8e2ff] bg-white px-2 py-1 text-[12px] font-medium text-[#33456d] outline-none focus:border-[#9bb1ff]"
             />
-            <span className="text-[12px] text-[#4b5dff]">{formatKoreanDate(reportDate)}</span>
           </div>
         </div>
 
@@ -166,9 +166,9 @@ function AiReportPage() {
             >
               <div className="flex items-center gap-2.5">
                 <Sparkles className="h-4.5 w-4.5 text-[#ffe15a]" />
-                <p className="text-[22px] font-semibold text-white">AI 종합 요약</p>
+                <p className="text-[22px] font-bold text-white">AI 종합 요약</p>
               </div>
-              <p className="mt-2 text-[18px] font-semibold leading-[1.5] whitespace-pre-line text-white">
+              <p className="mt-2 text-[18px] font-medium leading-[1.5] whitespace-pre-line text-white">
                 "{totalReport || (selectedMac ? "선택한 날짜의 분석 결과가 아직 없습니다." : "선택된 기기가 없습니다.")}"
               </p>
             </section>
@@ -215,15 +215,22 @@ function AiReportPage() {
                     <h3 className="text-[27px] font-semibold text-[#0f1f44]">AI 인프라 제어 효율</h3>
                   </div>
                   <div className="grid grid-cols-5 gap-2.5">
-                    {stats.map((item) => (
-                      <div key={item.key} className="rounded-xl border border-[#edf2fb] bg-[#fcfdff] px-2 py-2 text-center">
-                        <p className="text-[13px] font-semibold text-[#3b4f74]">{item.label}</p>
+                    {stats.map((item) => {
+                      const style = APPLIANCE_CARD_STYLES[item.key] || { bg: "#fcfdff", title: "#3b4f74", runtime: "#7a8dac" };
+                      return (
+                      <div
+                        key={item.key}
+                        className="rounded-xl border border-[#edf2fb] px-2 py-2 text-center"
+                        style={{ backgroundColor: style.bg }}
+                      >
+                        <p className="text-[13px] font-semibold" style={{ color: style.title }}>{item.label}</p>
                         <p className="mt-0.5 text-[20px] font-semibold text-[#111f3f]">{item.count}회</p>
-                        <p className="text-[12px] font-medium text-[#7a8dac]">
+                        <p className="text-[12px] font-medium" style={{ color: "#22211E" }}>
                           가동시간 {item.runtime}분
                         </p>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   <div className="mt-3 flex items-center justify-between rounded-xl border border-[#e8eef9] bg-white px-3 py-2">

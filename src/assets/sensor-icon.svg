@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 170" fill="none">
+  <defs>
+    <linearGradient id="wing" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f2f4f7"/>
+      <stop offset="1" stop-color="#9aa3b2"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#020617"/>
+    </linearGradient>
+  </defs>
+
+  <g stroke="#111111" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M24 84L144 58L170 82L110 98L52 100Z" fill="url(#wing)"/>
+    <path d="M30 104L132 92L154 108L102 120L58 120Z" fill="url(#wing)"/>
+    <path d="M40 123L112 118L130 132L92 140L64 140Z" fill="url(#wing)"/>
+
+    <path d="M396 84L276 58L250 82L310 98L368 100Z" fill="url(#wing)"/>
+    <path d="M390 104L288 92L266 108L318 120L362 120Z" fill="url(#wing)"/>
+    <path d="M380 123L308 118L290 132L328 140L356 140Z" fill="url(#wing)"/>
+
+    <path d="M210 24L262 46L248 132L210 154L172 132L158 46Z" fill="url(#shield)"/>
+    <path d="M210 36L248 52L238 124L210 140L182 124L172 52Z" fill="#0b1020"/>
+
+    <rect x="192" y="74" width="36" height="30" rx="4" fill="#dbe2ea" stroke="#e5e7eb"/>
+    <rect x="203" y="83" width="14" height="12" fill="#111827" stroke="none"/>
+
+    <path d="M182 64C190 56 200 52 210 52C220 52 230 56 238 64" stroke="#cbd5e1"/>
+    <path d="M186 112C193 118 201 121 210 121C219 121 227 118 234 112" stroke="#cbd5e1"/>
+
+    <path d="M182 84H168M182 94H166M238 84H252M238 94H254"/>
+  </g>
+</svg>

@@ -53,13 +53,14 @@ function App() {
     <>
       
       {/* 전체화면 컨테이너 */}
-      <div className="flex w-full h-screen overflow-hidden bg-slate-100">
-        
+      <div className="relative flex h-screen w-full overflow-hidden bg-transparent">
         {/* 좌측 고정 사이드 바 */}
-        <Sidebar />
+        <div className="relative z-10">
+          <Sidebar />
+        </div>
 
         {/* 우측 메인 영역 */}
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="relative z-10 flex min-w-0 flex-1 flex-col">
           <TopSidebar />
           <div className="flex-1 overflow-y-auto">
             {/* URL에 따라 화면 바꾸기  */}

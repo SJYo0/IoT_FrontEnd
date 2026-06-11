@@ -101,7 +101,7 @@ function ForgotPassword() {
   };
 
   return (
-    <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-white">
+    <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-transparent px-4">
       <GamifiedForgotPasswordCard
         step={step}
         username={username}

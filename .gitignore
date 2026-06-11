@@ -23,4 +23,17 @@ dist-ssr
 *.sln
 *.sw?
 
+<<<<<<< HEAD
 .env*
+=======
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
+thingsboard-source/
+>>>>>>> 6968136a2d2daf58214f02a4ebd70f97691fc85d

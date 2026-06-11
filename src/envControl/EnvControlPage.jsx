@@ -245,13 +245,13 @@ function EnvControlPage() {
   };
 
   const deviceChips = [
-    { key: "aircon", label: "에어컨", icon: Snowflake, activeClass: "bg-cyan-500" },
-    { key: "heater", label: "난방기", icon: Flame, activeClass: "bg-cyan-500" },
-    { key: "humidifier", label: "가습기", icon: Droplets, activeClass: "bg-cyan-500" },
-    { key: "dehumidifier", label: "제습기", icon: Waves, activeClass: "bg-cyan-500" },
-    { key: "airCleaner", label: "공기청정기", icon: Wind, activeClass: "bg-emerald-500" },
-    { key: "sprinkler", label: "스프링클러", icon: Droplets, activeClass: "bg-cyan-500" },
-    { key: "fireAlarm", label: "화재 경보기", icon: Bell, activeClass: "bg-cyan-500" },
+    { key: "aircon", label: "에어컨", icon: Snowflake, activeClass: "bg-[#22C55E]" },
+    { key: "heater", label: "난방기", icon: Flame, activeClass: "bg-[#F59E0B]" },
+    { key: "humidifier", label: "가습기", icon: Droplets, activeClass: "bg-[#10B981]" },
+    { key: "dehumidifier", label: "제습기", icon: Waves, activeClass: "bg-[#EAB308]" },
+    { key: "airCleaner", label: "공기청정기", icon: Wind, activeClass: "bg-[#FACC15]" },
+    { key: "sprinkler", label: "스프링클러", icon: Droplets, activeClass: "bg-[#3B82F6]" },
+    { key: "fireAlarm", label: "화재 경보기", icon: Bell, activeClass: "bg-[#EF4444]" },
   ];
   const topRowChips = deviceChips.slice(0, 5);
   const bottomRowChips = deviceChips.slice(5);
