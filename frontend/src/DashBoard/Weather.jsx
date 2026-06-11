@@ -1,4 +1,4 @@
-import { AlertTriangle, CloudSun, Frown, MapPin, Meh, Smile, Maximize2, Thermometer, Droplets, Lightbulb, RotateCcw } from "lucide-react";
+import { AlertTriangle, CloudSun, Frown, MapPin, Meh, Smile, Maximize2, Thermometer, Droplets, Lightbulb, RotateCcw, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
@@ -310,6 +310,7 @@ function Weather() {
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [activeMac, setActiveMac] = useState("");
   const activeMacRef = useRef("");
+  const analysisRefreshSyncRef = useRef(null);
   const dispatchedAlertKeysRef = useRef(new Set());
 
   // 💡 [추가] CCTV 소스 주소를 관리할 state (초기값은 빈 문자열)
@@ -350,30 +351,111 @@ function Weather() {
       const analysis = {
         status: normalizeAnalysisStatus(payload?.status),
         summary: normalizeAnalysisSummary(payload?.summary),
-        timestamp: payload?.createdAt ? new Date(payload.createdAt).getTime() : Date.now(),
+        timestamp: payload?.createdAt ? new Date(payload.createdAt).getTime() : null,
       };
       setAnalysisByMac((prev) => ({
         ...prev,
         [targetMac]: analysis,
       }));
+      return analysis;
     },
     [],
   );
 
   const handleAnalysisRefresh = useCallback(async () => {
     if (!activeMac) return;
+    const requestId = Date.now();
+    const prevAnalysis = analysisByMac[activeMac] ?? null;
+    const prevSignature = JSON.stringify({
+      status: prevAnalysis?.status ?? null,
+      summary: prevAnalysis?.summary ?? "",
+    });
+    const prevTs = Number(prevAnalysis?.timestamp ?? 0);
+    const POLL_INTERVAL_MS = 700;
+    const MAX_WAIT_MS = 90000;
+
+    const hasNewAnalysis = (nextAnalysis) => {
+      if (!nextAnalysis) return false;
+      if (!prevAnalysis) return true;
+      const nextTs = Number(nextAnalysis?.timestamp ?? 0);
+      if (nextTs > prevTs) return true;
+      const nextSignature = JSON.stringify({
+        status: nextAnalysis?.status ?? null,
+        summary: nextAnalysis?.summary ?? "",
+      });
+      return nextSignature !== prevSignature;
+    };
+
     try {
       setAnalysisLoading(true);
-      // 1) DB 저장된 최신 결과를 즉시 하단 박스에 표시
-      await fetchLatestAnalysis(activeMac);
-      // 2) 동시에 최신 비정상/최근 센서값 기준 재분석을 백엔드에 요청
+      analysisRefreshSyncRef.current = {
+        requestId,
+        mac: activeMac,
+        prevSignature,
+        prevTs,
+        readyToClose: false,
+      };
+
+      // 1) 최신 비정상/최근 센서값 기준 재분석 요청
       await apiFetch(`/api/ai/reanalyze?mac=${encodeURIComponent(activeMac)}`, { method: "POST" });
+
+      // 2) 최신 분석 결과가 실제로 갱신될 때까지 폴링
+      const startedAt = Date.now();
+      let updated = false;
+      while (Date.now() - startedAt < MAX_WAIT_MS) {
+        const latest = await fetchLatestAnalysis(activeMac).catch(() => null);
+        if (hasNewAnalysis(latest)) {
+          updated = true;
+          if (analysisRefreshSyncRef.current?.requestId === requestId) {
+            analysisRefreshSyncRef.current = {
+              ...analysisRefreshSyncRef.current,
+              readyToClose: true,
+            };
+          }
+          break;
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, POLL_INTERVAL_MS));
+      }
+      if (!updated) {
+        if (analysisRefreshSyncRef.current?.requestId === requestId) {
+          analysisRefreshSyncRef.current = null;
+        }
+        setAnalysisLoading(false);
+      }
     } catch (e) {
       console.error("AI 새로고침 실패:", e);
-    } finally {
       setAnalysisLoading(false);
+      if (analysisRefreshSyncRef.current?.requestId === requestId) {
+        analysisRefreshSyncRef.current = null;
+      }
     }
-  }, [activeMac, fetchLatestAnalysis]);
+  }, [activeMac, analysisByMac, fetchLatestAnalysis]);
+
+  useEffect(() => {
+    if (!analysisLoading) return;
+    const sync = analysisRefreshSyncRef.current;
+    if (!sync || !sync.readyToClose) return;
+
+    const latest = analysisByMac[sync.mac];
+    if (!latest) return;
+
+    const nextTs = Number(latest?.timestamp ?? 0);
+    const nextSignature = JSON.stringify({
+      status: latest?.status ?? null,
+      summary: latest?.summary ?? "",
+    });
+    const isNew = nextTs > sync.prevTs || nextSignature !== sync.prevSignature;
+    if (!isNew) return;
+
+    const rafId = window.requestAnimationFrame(() => {
+      if (analysisRefreshSyncRef.current?.requestId === sync.requestId) {
+        analysisRefreshSyncRef.current = null;
+      }
+      setAnalysisLoading(false);
+    });
+
+    return () => window.cancelAnimationFrame(rafId);
+  }, [analysisByMac, analysisLoading]);
 
   // 전체화면 토글 함수
   const handleFullscreen = () => {
@@ -990,10 +1072,18 @@ function Weather() {
                       className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60 hover:bg-slate-50"
                     >
                       <RotateCcw className={`h-2.5 w-2.5 ${analysisLoading ? "animate-spin" : ""}`} />
-                      {analysisLoading ? "갱신 중..." : "AI 새로고침"}
+                      {analysisLoading ? "분석 중..." : "AI 새로고침"}
                     </button>
                   </div>
-                  <div className="grid h-full grid-cols-1 gap-2.5 pt-8 xl:grid-cols-3">
+                  {analysisLoading ? (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center rounded-[18px] bg-slate-900/10 backdrop-blur-[1px]">
+                      <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-white/95 px-4 py-2 shadow-sm">
+                        <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
+                        <p className="text-[13px] font-semibold text-slate-700">AI 분석 결과를 가져오는 중입니다...</p>
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className={`grid h-full grid-cols-1 gap-2.5 pt-8 xl:grid-cols-3 ${analysisLoading ? "opacity-70" : ""}`}>
                     <div className="flex h-full min-h-0 flex-col rounded-xl border border-slate-200 bg-white p-2.5 overflow-hidden">
                       <div className="flex items-center gap-2 text-amber-600">
                         <Thermometer className="h-4 w-4" />

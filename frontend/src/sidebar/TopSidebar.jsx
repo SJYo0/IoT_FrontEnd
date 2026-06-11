@@ -263,16 +263,18 @@ function TopSidebar() {
     <header
       className="relative flex h-20 items-center justify-between border-b border-slate-200 bg-[#f7f8fb] px-6 tracking-[-0.02em] leading-relaxed"
     >
-      <div className="flex items-center gap-8">
+      <div className="flex items-center gap-5">
         <div className="flex items-center gap-3">
           <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-200 text-[12px] font-semibold text-slate-600">
             {userInitial}
           </span>
           <p className="text-[14px] font-medium text-slate-500">{displayUsername}</p>
         </div>
-        <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-slate-800">
-          IoT Monitoring
-        </h1>
+        <img
+          src="/aiss-wordmark.png"
+          alt="AISS"
+          className="ml-[-10px] mt-1 h-14 w-auto object-contain mix-blend-multiply"
+        />
       </div>
 
       <div className="z-20">

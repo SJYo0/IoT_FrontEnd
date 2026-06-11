@@ -45,7 +45,7 @@ export default function GamifiedSignupCard({
   };
 
   return (
-    <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-white">
+    <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-transparent px-4">
       <AnimatePresence>
         {particles.map((p) => (
           <motion.div
@@ -68,7 +68,7 @@ export default function GamifiedSignupCard({
       <motion.div
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="relative z-20 flex w-full max-w-md flex-col gap-6 rounded-2xl border border-zinc-200 bg-white p-8 shadow-2xl"
+        className="relative z-20 flex w-full max-w-md flex-col gap-6 rounded-2xl border border-zinc-200 bg-white/95 p-8 shadow-2xl backdrop-blur-sm"
       >
         <div className="text-center">
           <h2 className="text-3xl font-bold text-black">IoT Dashboard 관리자</h2>

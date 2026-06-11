@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch, ensureCsrfToken, readApiMessage } from "./api";
 import GamifiedLoginCard from "../components/ui/gamified-login-card";
+import { ShaderBackground } from "../components/ui/shader-background";
 
 function Auth() {
   const [id, setId] = useState("");
@@ -11,11 +12,12 @@ function Auth() {
 
   const navigate = useNavigate();
 
+   //로그인 페이지가 처음 열릴 때 자동으로 실행되는 초기 작업들
   useEffect(() => {
-    let active = true;
+    let active = true; // 화면 살아있을 때만 실행   
 
-    ensureCsrfToken().catch(() => {
-      if (active) {
+    ensureCsrfToken().catch(() => { 
+      if (active) { 
         setMessage("보안 토큰을 불러오지 못했습니다.");
       }
     });
@@ -71,17 +73,19 @@ function Auth() {
   };
 
   return (
-    <GamifiedLoginCard
-      username={id}
-      password={pw}
-      message={message}
-      loading={loading}
-      onUsernameChange={setId}
-      onPasswordChange={setPw}
-      onSubmit={login}
-      onSignup={() => navigate("/signup")}
-      onForgotPassword={() => navigate("/forgot-password")}
-    />
+    <ShaderBackground>
+      <GamifiedLoginCard
+        username={id}
+        password={pw}
+        message={message}
+        loading={loading}
+        onUsernameChange={setId}
+        onPasswordChange={setPw}
+        onSubmit={login}
+        onSignup={() => navigate("/signup")}
+        onForgotPassword={() => navigate("/forgot-password")}
+      />
+    </ShaderBackground>
   );
 }
 

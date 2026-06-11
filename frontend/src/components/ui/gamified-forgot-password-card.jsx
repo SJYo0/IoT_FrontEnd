@@ -31,7 +31,7 @@ export default function GamifiedForgotPasswordCard({
     <motion.div
       initial={{ scale: 0.95, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
-      className="relative z-20 flex w-full max-w-md flex-col gap-6 rounded-2xl border border-zinc-200 bg-white p-8 shadow-2xl"
+      className="relative z-20 flex w-full max-w-md flex-col gap-6 rounded-2xl border border-zinc-200 bg-white/95 p-8 shadow-2xl backdrop-blur-sm"
     >
       <motion.div
         key={step}

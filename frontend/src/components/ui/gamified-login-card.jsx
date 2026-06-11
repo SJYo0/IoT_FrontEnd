@@ -45,7 +45,8 @@ export default function GamifiedLoginCard({
   };
 
   return (
-    <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-white">
+    <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-transparent px-4">
+      <div className="absolute inset-0 bg-black/0" />
       <AnimatePresence>
         {particles.map((p) => (
           <motion.div
@@ -68,11 +69,14 @@ export default function GamifiedLoginCard({
       <motion.div
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="relative z-20 flex w-full max-w-md flex-col gap-6 rounded-2xl border border-zinc-200 bg-white p-8 shadow-2xl"
+        className="relative z-20 flex w-full max-w-md flex-col gap-6 rounded-2xl border border-zinc-200 bg-white p-8 shadow-2xl backdrop-blur-sm"
       >
-        <div className="text-center">
-          <h2 className="text-3xl font-bold text-black">IoT Dashboard {L.dashboardTitle}</h2>
-          <p className="mt-1 text-sm text-zinc-500">{L.loginSubtitle}</p>
+        <div className="mt-2 flex justify-center">
+          <img
+            src="/aiss-logo.png"
+            alt="AISS Agentic AIoT Platform"
+            className="h-auto w-full max-w-[280px] object-contain"
+          />
         </div>
 
         <div className="mt-2 flex flex-col gap-4">
